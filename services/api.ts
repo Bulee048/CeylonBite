@@ -1,9 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001/api';
+// Prefer an explicit environment URL (see .env.example). Fall back to a
+// platform-correct development default so an Android emulator never silently
+// points at the emulator's own localhost.
+const DEFAULT_API_URL =
+  Platform.OS === 'android'
+    ? 'http://10.0.2.2:5001/api' // Android emulator loopback to the host machine
+    : 'http://localhost:5001/api';
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || DEFAULT_API_URL;
 
 const TOKEN_KEY = 'ceylonbite_jwt_token';
+
+let unauthorizedHandler: (() => void) | null = null;
+let isRedirecting401 = false;
+
+export const setUnauthorizedHandler = (handler: () => void) => {
+  unauthorizedHandler = handler;
+};
 
 export const api = {
   async getToken(): Promise<string | null> {
@@ -58,9 +73,36 @@ export const api = {
         headers,
       });
 
-      const json = await res.json();
+      // Defensive parse: proxies/gateways may return an empty or non-JSON body.
+      const raw = await res.text();
+      let json: any = {};
+      if (raw) {
+        try {
+          json = JSON.parse(raw);
+        } catch {
+          json = { message: `Unexpected non-JSON response from server (status ${res.status}).` };
+        }
+      }
+
       if (!res.ok) {
-        return { success: false, message: json.message || 'Request failed' };
+        if (res.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/register')) {
+          if (!isRedirecting401) {
+            isRedirecting401 = true;
+            if (unauthorizedHandler) {
+              unauthorizedHandler();
+            }
+            setTimeout(() => {
+              isRedirecting401 = false;
+            }, 3000);
+          }
+        }
+        return { success: false, message: json.message || `Request failed (status ${res.status})` };
+      }
+
+      // Successful responses carry an explicit `success` flag; synthesise it for
+      // the rare empty/successful body so callers can rely on the shape.
+      if (json && typeof json === 'object' && json.success === undefined) {
+        return { success: true, data: json } as any;
       }
 
       return json;

@@ -1,26 +1,86 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ScrollView } from 'react-native';
-import { router } from 'expo-router';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ScrollView, Alert } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenContainer from '../../components/ui/ScreenContainer';
 import Header from '../../components/common/Header';
 import AppButton from '../../components/ui/AppButton';
 import AppInput from '../../components/ui/AppInput';
 import EmptyState from '../../components/ui/EmptyState';
+import LoadingState from '../../components/ui/LoadingState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
-import { mockCategories } from '../../data/mockData';
-import { useAdminMenuStore } from '../../store/adminMenuStore';
+import { FoodItem, Category } from '../../types';
+import { menuService } from '../../services/menuService';
 
 export default function AdminMenuScreen() {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'unavailable'>('all');
+  const [foods, setFoods] = useState<FoodItem[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const foods = useAdminMenuStore((state) => state.foods);
-  const toggleAvailability = useAdminMenuStore((state) => state.toggleAvailability);
-  const deleteFood = useAdminMenuStore((state) => state.deleteFood);
+  const loadFoods = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const fetched = await menuService.getFoods();
+      setFoods(fetched);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load menu items from the server.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadCategories = useCallback(async () => {
+    try {
+      const cats = await menuService.getCategories();
+      setCategories(cats.filter((cat) => cat.id !== 'all'));
+    } catch {
+      setCategories([]);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFoods();
+      loadCategories();
+    }, [loadFoods, loadCategories])
+  );
+
+  const handleToggleAvailability = async (item: FoodItem) => {
+    const newStatus = !item.isAvailable;
+    // Optimistic UI update
+    setFoods((prev) => prev.map((f) => (f.id === item.id ? { ...f, isAvailable: newStatus } : f)));
+    // Pass current (original) status so service can correctly invert it on backend
+    const { error } = await menuService.toggleFoodAvailability(item.id, item.isAvailable);
+    if (error) {
+      Alert.alert('Error', error);
+      loadFoods(); // Revert on failure
+    }
+  };
+
+  const handleDeleteFood = async (id: string) => {
+    Alert.alert('Delete Food Item', 'Are you sure you want to delete this meal item from the database?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setFoods((prev) => prev.filter((f) => f.id !== id));
+          const { error } = await menuService.deleteFood(id);
+          if (error) {
+            Alert.alert('Error', error);
+            loadFoods();
+          }
+        },
+      },
+    ]);
+  };
 
   const filteredFoods = foods.filter((item) => {
     const matchesQuery = item.name.toLowerCase().includes(query.toLowerCase()) || item.description.toLowerCase().includes(query.toLowerCase());
@@ -66,7 +126,7 @@ export default function AdminMenuScreen() {
           >
             <Text style={[styles.chipText, !selectedCategory && styles.chipTextActive]}>All Categories</Text>
           </TouchableOpacity>
-          {mockCategories.map((cat) => {
+          {categories.map((cat) => {
             const isActive = selectedCategory === cat.id;
             return (
               <TouchableOpacity
@@ -81,7 +141,17 @@ export default function AdminMenuScreen() {
         </ScrollView>
       </View>
 
-      {filteredFoods.length === 0 ? (
+      {error ? (
+        <EmptyState
+          iconName="cloud-offline-outline"
+          title="Could Not Load Menu"
+          description={`${error}\n\nMake sure the backend server is running and you are logged in as admin.`}
+          buttonTitle="Retry"
+          onButtonPress={loadFoods}
+        />
+      ) : loading && foods.length === 0 ? (
+        <LoadingState message="Loading menu from database..." />
+      ) : filteredFoods.length === 0 ? (
         <EmptyState
           iconName="restaurant-outline"
           title="No Food Items"
@@ -113,7 +183,7 @@ export default function AdminMenuScreen() {
               <View style={styles.actionCol}>
                 <TouchableOpacity
                   style={[styles.iconBtn, item.isAvailable && styles.activeToggleBtn]}
-                  onPress={() => toggleAvailability(item.id)}
+                  onPress={() => handleToggleAvailability(item)}
                 >
                   <Ionicons
                     name={item.isAvailable ? 'eye-outline' : 'eye-off-outline'}

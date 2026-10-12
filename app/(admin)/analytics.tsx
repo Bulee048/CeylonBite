@@ -1,34 +1,80 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import ScreenContainer from '../../components/ui/ScreenContainer';
 import Header from '../../components/common/Header';
+import LoadingState from '../../components/ui/LoadingState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
+import { api } from '../../services/api';
 
 export default function AdminAnalyticsScreen() {
-  const weeklySalesData = [
-    { day: 'Mon', heightPct: 40, amount: '45k' },
-    { day: 'Tue', heightPct: 55, amount: '62k' },
-    { day: 'Wed', heightPct: 50, amount: '58k' },
-    { day: 'Thu', heightPct: 70, amount: '78k' },
-    { day: 'Fri', heightPct: 90, amount: '98k' },
-    { day: 'Sat', heightPct: 100, amount: '120k' },
-    { day: 'Sun', heightPct: 85, amount: '95k' },
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchAnalytics = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const res = await api.get('/admin/analytics');
+    if (res.success && res.data) {
+      setData(res.data);
+    } else {
+      setError(res.message || 'Failed to load analytics metrics');
+    }
+    setLoading(false);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchAnalytics();
+    }, [fetchAnalytics])
+  );
+
+  const weeklySalesData = data?.weeklySales || [
+    { day: 'Mon', heightPct: 0, amount: '0' },
+    { day: 'Tue', heightPct: 0, amount: '0' },
+    { day: 'Wed', heightPct: 0, amount: '0' },
+    { day: 'Thu', heightPct: 0, amount: '0' },
+    { day: 'Fri', heightPct: 0, amount: '0' },
+    { day: 'Sat', heightPct: 0, amount: '0' },
+    { day: 'Sun', heightPct: 0, amount: '0' },
   ];
 
-  const topCategories = [
-    { name: 'Burgers', pct: 82, sales: 'LKR 420,000' },
-    { name: 'Chicken', pct: 75, sales: 'LKR 380,000' },
-    { name: 'Rice & Kottu', pct: 60, sales: 'LKR 310,000' },
-    { name: 'Pizza', pct: 45, sales: 'LKR 210,000' },
-  ];
+  const topCategories = data?.topCategories || [];
+  const topProducts = data?.topProducts || [];
 
-  const topProducts = [
-    { name: 'Ceylon Crunch Burger', orders: 240, revenue: 'LKR 288,000' },
-    { name: 'Spicy Chicken Bucket', orders: 185, revenue: 'LKR 462,500' },
-    { name: 'BBQ Chicken Pizza', orders: 130, revenue: 'LKR 286,000' },
-  ];
+  const totalWeeklySales = data?.totalWeeklyAmount
+    ? `Total: LKR ${Number(data.totalWeeklyAmount).toLocaleString()}`
+    : 'Total: LKR 0';
+
+  const avgOrderValue = data?.averageOrderValue ? `LKR ${Number(data.averageOrderValue).toLocaleString()}` : 'LKR 0';
+  const repeatRate = data?.repeatCustomerRate || '0%';
+  const completionRate = data?.orderCompletionRate || '100%';
+
+  if (loading) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <Header title="Analytics & Insights" subtitle="Loading restaurant metrics..." showBack />
+        <LoadingState message="Calculating restaurant analytics..." />
+      </ScreenContainer>
+    );
+  }
+
+  if (error) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <Header title="Analytics & Insights" subtitle="Sales performance & key restaurant metrics" showBack />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
+          <Text style={{ fontSize: 16, color: Colors.error, fontWeight: '700', textAlign: 'center', marginBottom: Spacing.md }}>
+            {error}
+          </Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   return (
     <ScreenContainer scrollable contentContainerStyle={styles.container}>
@@ -38,19 +84,19 @@ export default function AdminAnalyticsScreen() {
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
           <Text style={styles.statLabel}>Avg Order Value</Text>
-          <Text style={styles.statValue}>LKR 3,820</Text>
-          <Text style={styles.statSub}>+5.2% this week</Text>
+          <Text style={styles.statValue}>{avgOrderValue}</Text>
+          <Text style={styles.statSub}>Real-time metric</Text>
         </View>
 
         <View style={styles.statBox}>
           <Text style={styles.statLabel}>Repeat Customers</Text>
-          <Text style={styles.statValue}>38%</Text>
+          <Text style={styles.statValue}>{repeatRate}</Text>
           <Text style={styles.statSub}>Loyal diners</Text>
         </View>
 
         <View style={styles.statBox}>
           <Text style={styles.statLabel}>Order Completion</Text>
-          <Text style={styles.statValue}>92%</Text>
+          <Text style={styles.statValue}>{completionRate}</Text>
           <Text style={styles.statSub}>High efficiency</Text>
         </View>
       </View>
@@ -59,15 +105,15 @@ export default function AdminAnalyticsScreen() {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>Weekly Sales (Mon - Sun)</Text>
-          <Text style={styles.cardBadgeText}>Total: LKR 556,000</Text>
+          <Text style={styles.cardBadgeText}>{totalWeeklySales}</Text>
         </View>
 
         <View style={styles.chartContainer}>
-          {weeklySalesData.map((item, idx) => (
+          {weeklySalesData.map((item: any, idx: number) => (
             <View key={idx} style={styles.barCol}>
               <Text style={styles.barLabelText}>{item.amount}</Text>
               <View style={styles.barTrack}>
-                <View style={[styles.barFill, { height: `${item.heightPct}%` as any }]} />
+                <View style={[styles.barFill, { height: `${Math.max(item.heightPct || 0, 4)}%` as any }]} />
               </View>
               <Text style={styles.dayText}>{item.day}</Text>
             </View>
@@ -80,19 +126,23 @@ export default function AdminAnalyticsScreen() {
         <Text style={styles.cardTitle}>Top Food Categories</Text>
         <Text style={styles.cardSub}>Share of total revenue</Text>
 
-        <View style={styles.progressList}>
-          {topCategories.map((cat, idx) => (
-            <View key={idx} style={styles.progressItem}>
-              <View style={styles.catMetaRow}>
-                <Text style={styles.catName}>{cat.name}</Text>
-                <Text style={styles.catSales}>{cat.sales}</Text>
+        {topCategories.length === 0 ? (
+          <Text style={{ fontSize: 13, color: Colors.secondaryText, fontStyle: 'italic' }}>No category sales recorded yet.</Text>
+        ) : (
+          <View style={styles.progressList}>
+            {topCategories.map((cat: any, idx: number) => (
+              <View key={idx} style={styles.progressItem}>
+                <View style={styles.catMetaRow}>
+                  <Text style={styles.catName}>{cat.name}</Text>
+                  <Text style={styles.catSales}>{cat.sales}</Text>
+                </View>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${cat.pct}%` as any }]} />
+                </View>
               </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${cat.pct}%` as any }]} />
-              </View>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Top Products Table */}
@@ -100,15 +150,19 @@ export default function AdminAnalyticsScreen() {
         <Text style={styles.cardTitle}>Top Performing Products</Text>
         <Text style={styles.cardSub}>Best sellers by volume & revenue</Text>
 
-        {topProducts.map((prod, idx) => (
-          <View key={idx} style={styles.prodRow}>
-            <View style={styles.prodMeta}>
-              <Text style={styles.prodName}>{prod.name}</Text>
-              <Text style={styles.prodOrders}>{prod.orders} orders fulfilled</Text>
+        {topProducts.length === 0 ? (
+          <Text style={{ fontSize: 13, color: Colors.secondaryText, fontStyle: 'italic' }}>No item sales recorded yet.</Text>
+        ) : (
+          topProducts.map((prod: any, idx: number) => (
+            <View key={idx} style={styles.prodRow}>
+              <View style={styles.prodMeta}>
+                <Text style={styles.prodName}>{prod.name}</Text>
+                <Text style={styles.prodOrders}>{prod.orders} orders fulfilled</Text>
+              </View>
+              <Text style={styles.prodRev}>{prod.revenue}</Text>
             </View>
-            <Text style={styles.prodRev}>{prod.revenue}</Text>
-          </View>
-        ))}
+          ))
+        )}
       </View>
     </ScreenContainer>
   );

@@ -1,25 +1,50 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenContainer from '../../components/ui/ScreenContainer';
 import Header from '../../components/common/Header';
 import AppInput from '../../components/ui/AppInput';
 import FoodCard from '../../components/food/FoodCard';
 import EmptyState from '../../components/ui/EmptyState';
+import LoadingState from '../../components/ui/LoadingState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
-import { FoodItem } from '../../types';
-import { mockCategories } from '../../data/mockData';
-import { useAdminMenuStore } from '../../store/adminMenuStore';
+import { FoodItem, Category } from '../../types';
+import { menuService } from '../../services/menuService';
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState(['Burger', 'Spicy Chicken', 'Kottu', 'Pizza']);
+  const [foods, setFoods] = useState<FoodItem[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const foods = useAdminMenuStore((state) => state.foods);
+  const loadFoods = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [fetchedFoods, fetchedCategories] = await Promise.all([
+        menuService.getFoods(),
+        menuService.getCategories(),
+      ]);
+      setFoods(fetchedFoods);
+      setCategories(fetchedCategories.filter((cat) => cat.id !== 'all'));
+    } catch (err: any) {
+      setError(err?.message || 'Could not load the menu. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFoods();
+    }, [loadFoods])
+  );
 
   const handleClearRecent = () => {
     setRecentSearches([]);
@@ -76,7 +101,7 @@ export default function SearchScreen() {
               All Categories
             </Text>
           </TouchableOpacity>
-          {mockCategories.map((cat) => {
+          {categories.map((cat) => {
             const isActive = selectedCategory === cat.id;
             return (
               <TouchableOpacity
@@ -118,8 +143,18 @@ export default function SearchScreen() {
         )}
       </View>
 
-      {/* Results or Empty State */}
-      {filteredItems.length === 0 ? (
+      {/* Results, Loading or Error */}
+      {loading ? (
+        <LoadingState message="Searching the menu..." />
+      ) : error ? (
+        <EmptyState
+          iconName="cloud-offline-outline"
+          title="Could Not Load Menu"
+          description={`${error}\n\nMake sure the server is reachable, then retry.`}
+          buttonTitle="Retry"
+          onButtonPress={loadFoods}
+        />
+      ) : filteredItems.length === 0 ? (
         <EmptyState
           iconName="search-outline"
           title="No meals found"

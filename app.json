@@ -16,6 +16,9 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.ceylonbite.app",
+      "usesCleartextTraffic": true,
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#171412"

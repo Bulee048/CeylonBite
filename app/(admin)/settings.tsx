@@ -8,35 +8,21 @@ import AppButton from '../../components/ui/AppButton';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
+import { useAuthStore } from '../../store/authStore';
 
 export default function AdminSettingsScreen() {
-  const settingSections = [
-    {
-      title: 'Restaurant Profile',
-      subtitle: 'CeylonBite Colombo 03 • Flagship Branch',
-      icon: 'storefront-outline',
-    },
-    {
-      title: 'Opening Hours',
-      subtitle: 'Daily: 10:00 AM - 11:00 PM',
-      icon: 'time-outline',
-    },
-    {
-      title: 'Delivery Settings',
-      subtitle: 'Radius: 10km • Delivery fee LKR 250',
-      icon: 'bicycle-outline',
-    },
-    {
-      title: 'Notification Preferences',
-      subtitle: 'Order alerts, SMS & email reports',
-      icon: 'notifications-outline',
-    },
-    {
-      title: 'Admin Account & Security',
-      subtitle: 'dulmin.admin@ceylonbite.lk',
-      icon: 'key-outline',
-    },
-  ];
+  const { user, signOut } = useAuthStore();
+
+  const handleLogout = () => {
+    Alert.alert('Confirm Logout', 'Are you sure you want to log out of the admin console?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: () => signOut(),
+      },
+    ]);
+  };
 
   return (
     <ScreenContainer scrollable contentContainerStyle={styles.container}>
@@ -48,7 +34,7 @@ export default function AdminSettingsScreen() {
           <Ionicons name="phone-portrait-outline" size={24} color={Colors.primaryOrange} />
           <View style={styles.previewTextGroup}>
             <Text style={styles.previewTitle}>Customer Ordering App</Text>
-            <Text style={styles.previewSub}>Switch view to test ordering flow</Text>
+            <Text style={styles.previewSub}>Switch view to test customer ordering flow</Text>
           </View>
         </View>
         <AppButton
@@ -61,23 +47,42 @@ export default function AdminSettingsScreen() {
 
       {/* Settings Options List */}
       <View style={styles.settingsCard}>
-        {settingSections.map((sec, idx) => (
-          <TouchableOpacity
-            key={idx}
-            style={[styles.row, idx === settingSections.length - 1 && styles.noBorder]}
-            onPress={() => Alert.alert('Admin Settings', `${sec.title} configuration modal.`)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.iconCircle}>
-              <Ionicons name={sec.icon as any} size={20} color={Colors.primaryDark} />
-            </View>
-            <View style={styles.rowTextCol}>
-              <Text style={styles.rowTitle}>{sec.title}</Text>
-              <Text style={styles.rowSub}>{sec.subtitle}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={Colors.secondaryText} />
-          </TouchableOpacity>
-        ))}
+        {/* Admin Account Section */}
+        <View style={styles.row}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="person-circle-outline" size={22} color={Colors.primaryDark} />
+          </View>
+          <View style={styles.rowTextCol}>
+            <Text style={styles.rowTitle}>{user?.fullName || 'System Administrator'}</Text>
+            <Text style={styles.rowSub}>{user?.email || 'admin@ceylonbite.lk'}</Text>
+          </View>
+          <View style={styles.roleBadge}>
+            <Text style={styles.roleBadgeText}>ADMIN</Text>
+          </View>
+        </View>
+
+        {/* Restaurant Info Read-Only */}
+        <View style={styles.row}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="storefront-outline" size={20} color={Colors.primaryDark} />
+          </View>
+          <View style={styles.rowTextCol}>
+            <Text style={styles.rowTitle}>CeylonBite Flagship Branch</Text>
+            <Text style={styles.rowSub}>No. 45 Galle Road, Colombo 03 • (Active)</Text>
+          </View>
+        </View>
+
+        {/* Logout Row */}
+        <TouchableOpacity style={[styles.row, styles.noBorder]} onPress={handleLogout} activeOpacity={0.7}>
+          <View style={[styles.iconCircle, { backgroundColor: '#FEE2E2' }]}>
+            <Ionicons name="log-out-outline" size={20} color={Colors.error} />
+          </View>
+          <View style={styles.rowTextCol}>
+            <Text style={[styles.rowTitle, { color: Colors.error }]}>Log Out</Text>
+            <Text style={styles.rowSub}>Sign out of your admin session</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={Colors.secondaryText} />
+        </TouchableOpacity>
       </View>
     </ScreenContainer>
   );
@@ -158,5 +163,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.secondaryText,
     marginTop: 2,
+  },
+  roleBadge: {
+    backgroundColor: Colors.primaryOrange,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
+  },
+  roleBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: '800',
   },
 });

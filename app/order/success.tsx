@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,7 +8,6 @@ import AppButton from '../../components/ui/AppButton';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
-import { useCartStore } from '../../store/cartStore';
 
 export default function OrderSuccessScreen() {
   const {
@@ -16,19 +15,20 @@ export default function OrderSuccessScreen() {
     orderType = 'Delivery',
     total = '4,230',
     estimatedTime = '25–30 min',
+    priceAdjusted = 'false',
   } = useLocalSearchParams<{
     orderNumber?: string;
     orderType?: string;
     total?: string;
     estimatedTime?: string;
+    priceAdjusted?: string;
   }>();
 
-  const clearCart = useCartStore((state) => state.clearCart);
+  const wasAdjusted = priceAdjusted === 'true';
 
-  // Clear cart safely when order success screen opens
-  useEffect(() => {
-    clearCart();
-  }, [clearCart]);
+  // NOTE: The cart is cleared by the checkout screen only AFTER the server
+  // confirms the order. Clearing it here again could wipe a freshly-built cart
+  // if this screen is ever revisited, so it is intentionally not done here.
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -64,6 +64,15 @@ export default function OrderSuccessScreen() {
             <Text style={styles.totalValText}>LKR {total}</Text>
           </View>
         </View>
+
+        {wasAdjusted && (
+          <View style={styles.adjustNote}>
+            <Ionicons name="information-circle-outline" size={16} color={Colors.primaryDark} />
+            <Text style={styles.adjustNoteText}>
+              The final total was recalculated from current menu prices and any applied offer.
+            </Text>
+          </View>
+        )}
 
         {/* Action Buttons */}
         <View style={styles.buttonGroup}>
@@ -178,6 +187,22 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     color: Colors.primary,
+  },
+  adjustNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    backgroundColor: Colors.lightOrange,
+    borderRadius: Radius.lg,
+    padding: Spacing.sm + 2,
+    marginBottom: Spacing.lg,
+    gap: 6,
+  },
+  adjustNoteText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.primaryDark,
+    lineHeight: 16,
   },
   buttonGroup: {
     width: '100%',

@@ -8,6 +8,7 @@ import ScreenContainer from '../../components/ui/ScreenContainer';
 import Header from '../../components/common/Header';
 import AppButton from '../../components/ui/AppButton';
 import EmptyState from '../../components/ui/EmptyState';
+import LoadingState from '../../components/ui/LoadingState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
@@ -20,6 +21,7 @@ export default function CartScreen() {
     decreaseQuantity,
     removeItem,
     getSubtotal,
+    hasHydrated,
   } = useCartStore();
 
   const subtotal = getSubtotal();
@@ -33,7 +35,9 @@ export default function CartScreen() {
           <Header title="My Cart" subtitle="Review & checkout your CeylonBite order" showBack />
         </View>
 
-        {items.length === 0 ? (
+        {!hasHydrated ? (
+          <LoadingState message="Restoring your cart..." />
+        ) : items.length === 0 ? (
           <EmptyState
             iconName="cart-outline"
             title="Your cart is empty"

@@ -59,19 +59,43 @@ exports.updateFood = async (req, res, next) => {
 
     const pool = await getPool();
 
+    // Resolve category ID if slug passed (matches createFood behavior)
+    let categoryIDInt = null;
+    if (category_id) {
+      categoryIDInt = parseInt(category_id, 10);
+      if (isNaN(categoryIDInt)) {
+        const catRes = await pool
+          .request()
+          .input('slug', mssql.NVarChar, category_id)
+          .query('SELECT CategoryID FROM Categories WHERE Slug = @slug OR Name = @slug');
+
+        if (catRes.recordset.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Provided category does not exist.',
+          });
+        }
+        categoryIDInt = catRes.recordset[0].CategoryID;
+      }
+    }
+
     const result = await pool
       .request()
       .input('id', mssql.Int, id)
+      .input('categoryID', mssql.Int, categoryIDInt)
       .input('name', mssql.NVarChar, name)
       .input('description', mssql.NVarChar, description)
       .input('price', mssql.Decimal(10, 2), price)
       .input('imageURL', mssql.NVarChar, image_url)
       .input('rating', mssql.Decimal(2, 1), rating)
-      .input('isAvailable', mssql.Bit, is_available !== undefined ? (is_available ? 1 : 0) : 1)
-      .input('isPopular', mssql.Bit, is_popular ? 1 : 0)
+      // Passing NULL when the field is omitted lets COALESCE keep the existing
+      // value instead of silently flipping availability/popularity flags.
+      .input('isAvailable', mssql.Bit, is_available === undefined || is_available === null ? null : (is_available ? 1 : 0))
+      .input('isPopular', mssql.Bit, is_popular === undefined || is_popular === null ? null : (is_popular ? 1 : 0))
       .query(`
         UPDATE Foods
-        SET Name = COALESCE(@name, Name),
+        SET CategoryID = COALESCE(@categoryID, CategoryID),
+            Name = COALESCE(@name, Name),
             Description = COALESCE(@description, Description),
             Price = COALESCE(@price, Price),
             ImageURL = COALESCE(@imageURL, ImageURL),
@@ -81,6 +105,10 @@ exports.updateFood = async (req, res, next) => {
             UpdatedAt = GETDATE()
         WHERE FoodID = @id;
       `);
+
+    if (!result.rowsAffected || result.rowsAffected[0] === 0) {
+      return res.status(404).json({ success: false, message: 'Food item not found' });
+    }
 
     res.json({
       success: true,
@@ -96,10 +124,18 @@ exports.deleteFood = async (req, res, next) => {
     const { id } = req.params;
     const pool = await getPool();
 
-    await pool
-      .request()
-      .input('id', mssql.Int, id)
-      .query('DELETE FROM Foods WHERE FoodID = @id');
+    try {
+      await pool
+        .request()
+        .input('id', mssql.Int, id)
+        .query('DELETE FROM Foods WHERE FoodID = @id');
+    } catch (dbErr) {
+      // If referenced by OrderItems or FK constraint, soft delete by disabling availability
+      await pool
+        .request()
+        .input('id', mssql.Int, id)
+        .query('UPDATE Foods SET IsAvailable = 0, UpdatedAt = GETDATE() WHERE FoodID = @id');
+    }
 
     res.json({
       success: true,

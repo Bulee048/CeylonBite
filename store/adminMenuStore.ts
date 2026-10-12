@@ -1,50 +1,73 @@
 import { create } from 'zustand';
 import { FoodItem } from '../types';
-import { mockFoodItems } from '../data/mockData';
+import { menuService } from '../services/menuService';
 
 interface AdminMenuStore {
   foods: FoodItem[];
-  addFood: (item: Omit<FoodItem, 'id'>) => void;
-  updateFood: (id: string, updatedFields: Partial<FoodItem>) => void;
-  deleteFood: (id: string) => void;
-  toggleAvailability: (id: string) => void;
+  loading: boolean;
+  error: string | null;
+  fetchItems: () => Promise<void>;
+  createItem: (item: Omit<FoodItem, 'id'>) => Promise<{ data: FoodItem | null; error: string | null }>;
+  updateItem: (id: string, updatedFields: Partial<FoodItem>) => Promise<{ error: string | null }>;
+  deleteItem: (id: string) => Promise<{ error: string | null }>;
+  toggleAvailability: (id: string, currentStatus: boolean) => Promise<{ error: string | null }>;
   getFoodById: (id: string) => FoodItem | undefined;
 }
 
 export const useAdminMenuStore = create<AdminMenuStore>((set, get) => ({
-  foods: mockFoodItems,
+  foods: [],
+  loading: false,
+  error: null,
 
-  addFood: (newItemData) => {
-    const newId = `f_${Date.now()}`;
-    const newFoodItem: FoodItem = {
-      ...newItemData,
-      id: newId,
-    };
-    set((state) => ({
-      foods: [newFoodItem, ...state.foods],
-    }));
+  fetchItems: async () => {
+    set({ loading: true, error: null });
+    try {
+      const items = await menuService.getFoods();
+      set({ foods: items, loading: false });
+    } catch (err: any) {
+      set({ error: err?.message || 'Failed to fetch menu items', loading: false });
+    }
   },
 
-  updateFood: (id, updatedFields) => {
-    set((state) => ({
-      foods: state.foods.map((food) =>
-        food.id === id ? { ...food, ...updatedFields } : food
-      ),
-    }));
+  createItem: async (newItemData) => {
+    set({ loading: true });
+    const res = await menuService.createFood(newItemData);
+    if (!res.error) {
+      await get().fetchItems();
+    } else {
+      set({ loading: false });
+    }
+    return res;
   },
 
-  deleteFood: (id) => {
-    set((state) => ({
-      foods: state.foods.filter((food) => food.id !== id),
-    }));
+  updateItem: async (id, updatedFields) => {
+    set({ loading: true });
+    const res = await menuService.updateFood(id, updatedFields);
+    if (!res.error) {
+      await get().fetchItems();
+    } else {
+      set({ loading: false });
+    }
+    return res;
   },
 
-  toggleAvailability: (id) => {
-    set((state) => ({
-      foods: state.foods.map((food) =>
-        food.id === id ? { ...food, isAvailable: !food.isAvailable } : food
-      ),
-    }));
+  deleteItem: async (id) => {
+    set({ loading: true });
+    const res = await menuService.deleteFood(id);
+    if (!res.error) {
+      await get().fetchItems();
+    } else {
+      set({ loading: false });
+    }
+    return res;
+  },
+
+  toggleAvailability: async (id, currentStatus) => {
+    const res = await menuService.toggleFoodAvailability(id, currentStatus);
+    if (!res.error) {
+      await get().fetchItems();
+    }
+    return res;
   },
 
   getFoodById: (id) => {

@@ -4,12 +4,21 @@ const generateToken = require('../utils/generateToken');
 
 exports.register = async (req, res, next) => {
   try {
-    const { fullName, email, password, phone } = req.body;
+    const { fullName, email, password, phone, address } = req.body;
 
-    if (!fullName || !email || !password) {
+    if (!fullName || !String(fullName).trim() || !email || !password) {
       return res.status(400).json({
         success: false,
         message: 'Full name, email, and password are required.',
+      });
+    }
+
+    // Keep server-side email validation aligned with the client (name@domain.tld).
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(String(email).trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid email address.',
       });
     }
 
@@ -45,12 +54,13 @@ exports.register = async (req, res, next) => {
       .input('fullName', mssql.NVarChar, fullName.trim())
       .input('email', mssql.NVarChar, email.toLowerCase().trim())
       .input('phone', mssql.NVarChar, phone || null)
+      .input('address', mssql.NVarChar, address || null)
       .input('passwordHash', mssql.NVarChar, passwordHash)
       .input('role', mssql.NVarChar, 'customer')
       .query(`
-        INSERT INTO Users (FullName, Email, Phone, PasswordHash, Role)
-        OUTPUT INSERTED.UserID, INSERTED.FullName, INSERTED.Email, INSERTED.Phone, INSERTED.Role
-        VALUES (@fullName, @email, @phone, @passwordHash, @role);
+        INSERT INTO Users (FullName, Email, Phone, Address, PasswordHash, Role)
+        OUTPUT INSERTED.UserID, INSERTED.FullName, INSERTED.Email, INSERTED.Phone, INSERTED.Address, INSERTED.Role
+        VALUES (@fullName, @email, @phone, @address, @passwordHash, @role);
       `);
 
     const newUser = insertResult.recordset[0];
@@ -66,6 +76,7 @@ exports.register = async (req, res, next) => {
           fullName: newUser.FullName,
           email: newUser.Email,
           phone: newUser.Phone,
+          address: newUser.Address,
           role: newUser.Role,
         },
       },
@@ -92,7 +103,7 @@ exports.login = async (req, res, next) => {
     const result = await pool
       .request()
       .input('email', mssql.NVarChar, email.toLowerCase().trim())
-      .query('SELECT UserID, FullName, Email, Phone, PasswordHash, Role, IsActive FROM Users WHERE LOWER(Email) = LOWER(@email)');
+      .query('SELECT UserID, FullName, Email, Phone, Address, PasswordHash, Role, IsActive FROM Users WHERE LOWER(Email) = LOWER(@email)');
 
     if (result.recordset.length === 0) {
       return res.status(401).json({
@@ -131,6 +142,7 @@ exports.login = async (req, res, next) => {
           fullName: user.FullName,
           email: user.Email,
           phone: user.Phone,
+          address: user.Address,
           role: user.Role,
         },
       },
@@ -147,7 +159,7 @@ exports.getMe = async (req, res, next) => {
     const result = await pool
       .request()
       .input('userId', mssql.Int, req.user.userId)
-      .query('SELECT UserID, FullName, Email, Phone, Role FROM Users WHERE UserID = @userId');
+      .query('SELECT UserID, FullName, Email, Phone, Address, Role FROM Users WHERE UserID = @userId');
 
     if (result.recordset.length === 0) {
       return res.status(404).json({
@@ -165,6 +177,7 @@ exports.getMe = async (req, res, next) => {
         fullName: user.FullName,
         email: user.Email,
         phone: user.Phone,
+        address: user.Address,
         role: user.Role,
       },
     });

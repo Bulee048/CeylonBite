@@ -18,6 +18,7 @@ import CategoryChip from '../../components/food/CategoryChip';
 import FoodCard from '../../components/food/FoodCard';
 import AppButton from '../../components/ui/AppButton';
 import LoadingState from '../../components/ui/LoadingState';
+import EmptyState from '../../components/ui/EmptyState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
@@ -25,8 +26,11 @@ import { FoodItem, Category } from '../../types';
 import { useCartStore } from '../../store/cartStore';
 import { useAuthStore } from '../../store/authStore';
 import { menuService } from '../../services/menuService';
+import { useFavoritesStore } from '../../store/favoritesStore';
 
 const logoImg = require('../../assets/images/logo.png');
+
+import { useFocusEffect } from 'expo-router';
 
 export default function CustomerHomeScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
@@ -34,25 +38,38 @@ export default function CustomerHomeScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [foods, setFoods] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const cartCount = useCartStore((state) => state.getItemCount());
+  const cartHydrated = useCartStore((state) => state.hasHydrated);
   const profile = useAuthStore((state) => state.profile);
 
-  useEffect(() => {
-    loadData();
+  const loadData = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [fetchedCategories, fetchedFoods] = await Promise.all([
+        menuService.getCategories(),
+        menuService.getFoods(),
+      ]);
+      const cleanCategories = fetchedCategories.filter((c) => c.id !== 'all');
+      setCategories([{ id: 'all', name: 'All', iconName: 'restaurant-outline' }, ...cleanCategories]);
+      setFoods(fetchedFoods);
+    } catch (err: any) {
+      setError(err?.message || 'Could not load the restaurant menu. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
-    const [fetchedCategories, fetchedFoods] = await Promise.all([
-      menuService.getCategories(),
-      menuService.getFoods(),
-    ]);
-    const cleanCategories = fetchedCategories.filter((c) => c.id !== 'all');
-    setCategories([{ id: 'all', name: 'All', iconName: 'restaurant-outline' }, ...cleanCategories]);
-    setFoods(fetchedFoods);
-    setLoading(false);
-  };
+  const loadFavorites = useFavoritesStore((state) => state.loadFavorites);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadData();
+      loadFavorites(); // Sync favorites on each focus
+    }, [loadData, loadFavorites])
+  );
 
   const popularItems = foods.filter((item) => item.isPopular);
   const recommendedItems = foods.filter((item) =>
@@ -97,7 +114,7 @@ export default function CustomerHomeScreen() {
           activeOpacity={0.8}
         >
           <Ionicons name="cart-outline" size={22} color={Colors.primaryDark} />
-          {cartCount > 0 ? (
+          {cartHydrated && cartCount > 0 ? (
             <View style={styles.cartBadge}>
               <Text style={styles.cartBadgeText}>{cartCount}</Text>
             </View>
@@ -128,6 +145,17 @@ export default function CustomerHomeScreen() {
           <Ionicons name="options-outline" size={20} color={Colors.white} />
         </TouchableOpacity>
       </View>
+
+      {/* Menu Load Error */}
+      {error && foods.length === 0 ? (
+        <EmptyState
+          iconName="cloud-offline-outline"
+          title="Could Not Load Menu"
+          description={`${error}\n\nMake sure the server is reachable, then retry.`}
+          buttonTitle="Retry"
+          onButtonPress={loadData}
+        />
+      ) : null}
 
       {/* Categories Horizontal Bar */}
       <ScrollView

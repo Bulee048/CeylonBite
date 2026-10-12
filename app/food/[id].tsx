@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,39 +6,84 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EmptyState from '../../components/ui/EmptyState';
+import LoadingState from '../../components/ui/LoadingState';
 import AppButton from '../../components/ui/AppButton';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
-import { mockFoodItems } from '../../data/mockData';
+import { FoodItem } from '../../types';
+import { menuService } from '../../services/menuService';
+import { useFavoritesStore } from '../../store/favoritesStore';
 import { useCartStore, ExtraItem } from '../../store/cartStore';
 
 export default function FoodDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const addItemToCart = useCartStore((state) => state.addItem);
 
-  // Find target food item from mockData
-  const item = mockFoodItems.find((f) => f.id === id);
+  const [item, setItem] = useState<FoodItem | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Local React state for options & quantity
   const [quantity, setQuantity] = useState(1);
-  const [isFavorite, setIsFavorite] = useState(false);
   const [selectedSpice, setSelectedSpice] = useState<'Mild' | 'Ceylon Spicy' | 'Extra Hot'>('Ceylon Spicy');
-  const [selectedExtras, setSelectedExtras] = useState<string[]>(['ex-1']); // default Extra Cheese
+  const [selectedExtras, setSelectedExtras] = useState<string[]>([]); // opt-in extras only
   const [specialInstructions, setSpecialInstructions] = useState('');
+  // Extras now come from the server-side catalog (authoritative pricing).
+  const [extrasList, setExtrasList] = useState<ExtraItem[]>([]);
 
-  // Available extras mock data
-  const extrasList: ExtraItem[] = [
-    { id: 'ex-1', name: 'Extra Cheese', price: 250 },
-    { id: 'ex-2', name: 'Extra Chicken', price: 450 },
-    { id: 'ex-3', name: 'Signature Sauce', price: 150 },
-  ];
+  // Global favorites store (single source of truth shared with FoodCard)
+  const favoriteIds = useFavoritesStore((state) => state.favoriteIds);
+  const toggleFavorite = useFavoritesStore((state) => state.toggleFavorite);
+  const isFavorite = favoriteIds.includes(String(id));
+
+  useEffect(() => {
+    if (!id) return;
+    // Reset all per-product customization state whenever the product id changes
+    // so choices made for one meal never leak into another.
+    setQuantity(1);
+    setSelectedSpice('Ceylon Spicy');
+    setSelectedExtras([]);
+    setSpecialInstructions('');
+    loadFood();
+  }, [id]);
+
+  const loadFood = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [fetchedFood, fetchedExtras] = await Promise.all([
+        menuService.getFoodById(id!),
+        // Extras are optional: a failure to load them must not block ordering.
+        menuService.getExtras().catch(() => [] as ExtraItem[]),
+      ]);
+      if (fetchedFood) setItem(fetchedFood);
+      setExtrasList(
+        fetchedExtras.map((e) => ({ id: String(e.id), name: e.name, price: e.price }))
+      );
+    } catch (err: any) {
+      setError(err?.message || 'Could not load this meal. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleFav = async () => {
+    if (!id) return;
+    const res = await toggleFavorite(id);
+    if (res.error) {
+      Alert.alert('Favorites', res.error || 'Could not update favorite.');
+    }
+  };
+
+  // Available extras are loaded from the server catalog (see loadFood).
 
   const spiceOptions: ('Mild' | 'Ceylon Spicy' | 'Extra Hot')[] = [
     'Mild',
@@ -46,16 +91,26 @@ export default function FoodDetailScreen() {
     'Extra Hot',
   ];
 
-  // Safe fallback if invalid ID is provided
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <LoadingState message="Loading food details..." />
+      </SafeAreaView>
+    );
+  }
+
+  // Safe fallback if the item could not be loaded
   if (!item) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <EmptyState
           iconName="restaurant-outline"
-          title="Food Item Not Found"
-          description="We couldn't find the requested meal. Please explore our full menu."
-          buttonTitle="Back to Menu"
-          onButtonPress={() => router.replace('/(customer)/menu')}
+          title={error ? 'Could Not Load Meal' : 'Food Item Not Found'}
+          description={
+            error || "We couldn't find the requested meal. Please explore our full menu."
+          }
+          buttonTitle={error ? 'Retry' : 'Back to Menu'}
+          onButtonPress={error ? loadFood : () => router.replace('/(customer)/menu')}
         />
       </SafeAreaView>
     );
@@ -74,17 +129,27 @@ export default function FoodDetailScreen() {
   const activeExtras = extrasList.filter((e) => selectedExtras.includes(e.id));
 
   // Calculate live total price: (item price + selected extras) * quantity
+  const itemBasePrice = Number.isFinite(item.price) ? item.price : 0;
   const extrasTotal = activeExtras.reduce((sum, e) => sum + e.price, 0);
-  const unitTotal = item.price + extrasTotal;
+  const unitTotal = itemBasePrice + extrasTotal;
   const totalPrice = unitTotal * quantity;
 
   const handleAddToCart = () => {
+    // Never allow an unavailable item to enter the cart.
+    if (!item.isAvailable) {
+      Alert.alert(
+        'Currently Unavailable',
+        `"${item.name}" is not available for ordering right now.`
+      );
+      return;
+    }
+
     // Add item to Zustand cart store
     addItemToCart({
       foodId: item.id,
       name: item.name,
       image: item.image,
-      basePrice: item.price,
+      basePrice: itemBasePrice,
       quantity,
       selectedSpice,
       extras: activeExtras,
@@ -123,7 +188,7 @@ export default function FoodDetailScreen() {
 
             <TouchableOpacity
               style={styles.circleBtn}
-              onPress={() => setIsFavorite(!isFavorite)}
+              onPress={handleToggleFav}
               activeOpacity={0.8}
             >
               <Ionicons
@@ -215,28 +280,30 @@ export default function FoodDetailScreen() {
           </View>
 
           {/* Add Extras (Multiple choice checkboxes) */}
-          <View style={styles.customGroup}>
-            <Text style={styles.subSectionTitle}>Add Extras</Text>
-            {extrasList.map((extra) => {
-              const isChecked = selectedExtras.includes(extra.id);
-              return (
-                <TouchableOpacity
-                  key={extra.id}
-                  style={[styles.checkboxRow, isChecked && styles.checkboxRowSelected]}
-                  onPress={() => toggleExtra(extra.id)}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.checkboxBox, isChecked && styles.checkboxBoxSelected]}>
-                    {isChecked && <Ionicons name="checkmark" size={14} color={Colors.white} />}
-                  </View>
-                  <Text style={[styles.optionLabel, isChecked && styles.optionLabelSelected]}>
-                    {extra.name}
-                  </Text>
-                  <Text style={styles.extraPriceText}>+ LKR {extra.price}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          {extrasList.length > 0 && (
+            <View style={styles.customGroup}>
+              <Text style={styles.subSectionTitle}>Add Extras</Text>
+              {extrasList.map((extra) => {
+                const isChecked = selectedExtras.includes(extra.id);
+                return (
+                  <TouchableOpacity
+                    key={extra.id}
+                    style={[styles.checkboxRow, isChecked && styles.checkboxRowSelected]}
+                    onPress={() => toggleExtra(extra.id)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.checkboxBox, isChecked && styles.checkboxBoxSelected]}>
+                      {isChecked && <Ionicons name="checkmark" size={14} color={Colors.white} />}
+                    </View>
+                    <Text style={[styles.optionLabel, isChecked && styles.optionLabelSelected]}>
+                      {extra.name}
+                    </Text>
+                    <Text style={styles.extraPriceText}>+ LKR {extra.price}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
 
           <View style={styles.divider} />
 

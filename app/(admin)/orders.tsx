@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenContainer from '../../components/ui/ScreenContainer';
@@ -10,28 +10,45 @@ import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
 import { OrderStatus } from '../../types';
-import { DetailedOrder } from '../../data/mockOrders';
+import { DetailedOrder } from '../../types';
 import { orderService } from '../../services/orderService';
+import { useAdminOrderStore } from '../../store/adminOrderStore';
+import { useFocusEffect } from 'expo-router';
 
 export default function AdminOrdersScreen() {
   const [selectedFilter, setSelectedFilter] = useState<string>('All');
-  const [orders, setOrders] = useState<DetailedOrder[]>([]);
+  const storeOrders = useAdminOrderStore((state) => state.orders);
+  const setStoreOrders = useAdminOrderStore((state) => state.setOrders);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadOrders();
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const fetched = await orderService.getAllOrders();
+      setStoreOrders(fetched);
+      if (fetched.length === 0) {
+        console.log('[AdminOrders] API returned 0 orders — check token/role');
+      }
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to load orders';
+      setError(msg);
+      console.error('[AdminOrders] Error:', msg);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const loadOrders = async () => {
-    setLoading(true);
-    const fetched = await orderService.getAllOrders();
-    setOrders(fetched);
-    setLoading(false);
-  };
+  useFocusEffect(
+    useCallback(() => {
+      loadOrders();
+    }, [loadOrders])
+  );
 
   const filters = ['All', 'pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
 
-  const filteredOrders = orders.filter((order) => {
+  const filteredOrders = storeOrders.filter((order) => {
     if (selectedFilter === 'All') return true;
     return order.status === selectedFilter;
   });
@@ -80,7 +97,17 @@ export default function AdminOrdersScreen() {
         </ScrollView>
       </View>
 
-      {filteredOrders.length === 0 ? (
+      {loading ? (
+        <LoadingState message="Loading orders from database..." />
+      ) : error ? (
+        <EmptyState
+          iconName="alert-circle-outline"
+          title="Could Not Load Orders"
+          description={`Error: ${error}\n\nMake sure you are logged in as admin and the backend server is running.`}
+          buttonTitle="Retry"
+          onButtonPress={loadOrders}
+        />
+      ) : filteredOrders.length === 0 ? (
         <EmptyState
           iconName="receipt-outline"
           title="No Orders Found"

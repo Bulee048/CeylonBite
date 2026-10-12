@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { api } from '../services/api';
 import { authService, UserProfile } from '../services/authService';
+import { useFavoritesStore } from './favoritesStore';
+import { useCartStore } from './cartStore';
+import { router } from 'expo-router';
 
 interface AuthStore {
   token: string | null;
@@ -38,6 +41,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             isAuthenticated: true,
             isLoading: false,
           });
+          // Best-effort: hydrate favorites for the restored session.
+          useFavoritesStore.getState().loadFavorites().catch(() => {});
           return;
         }
       }
@@ -77,6 +82,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         isLoading: false,
       });
 
+      // Account isolation: never let a cart persisted for a previous session
+      // leak into a different account. (Logout also clears it.)
+      useCartStore.getState().clearCart();
+
+      // Best-effort: load this user's favorites for the new session.
+      useFavoritesStore.getState().loadFavorites().catch(() => {});
+
       return { error: null, role: userProfile.role };
     } catch (e: any) {
       set({ isLoading: false });
@@ -111,6 +123,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         };
         await api.setToken(token);
         set({ token, user: userProfile, profile: userProfile, isAuthenticated: true, isLoading: false });
+        // Account isolation: new/other account starts with a clean cart.
+        useCartStore.getState().clearCart();
+        // Best-effort: new accounts start with no favorites, but keep the store in sync.
+        useFavoritesStore.getState().loadFavorites().catch(() => {});
       } else {
         set({ isLoading: false });
       }
@@ -126,9 +142,15 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       set({ isLoading: true });
       await api.removeToken();
+      useCartStore.getState().clearCart();
+      useFavoritesStore.getState().setFavoriteIds([]);
       set({ token: null, user: null, profile: null, isAuthenticated: false, isLoading: false });
+      router.replace('/(auth)/login');
     } catch {
+      useCartStore.getState().clearCart();
+      useFavoritesStore.getState().setFavoriteIds([]);
       set({ token: null, user: null, profile: null, isAuthenticated: false, isLoading: false });
+      router.replace('/(auth)/login');
     }
   },
 

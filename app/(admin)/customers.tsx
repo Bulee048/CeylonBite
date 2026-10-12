@@ -1,59 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import ScreenContainer from '../../components/ui/ScreenContainer';
 import Header from '../../components/common/Header';
 import AppInput from '../../components/ui/AppInput';
 import EmptyState from '../../components/ui/EmptyState';
+import LoadingState from '../../components/ui/LoadingState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
 import { Customer } from '../../types';
+import { authService } from '../../services/authService';
 
 export default function AdminCustomersScreen() {
   const [query, setQuery] = useState('');
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const mockCustomers: Customer[] = [
-    {
-      id: 'c1',
-      name: 'Dulmin Silva',
-      email: 'dulmin@example.com',
-      phone: '+94 77 123 4567',
-      ordersCount: 8,
-      totalSpent: 24500,
-      status: 'Active',
-    },
-    {
-      id: 'c2',
-      name: 'Kavindi Perera',
-      email: 'kavindi@gmail.com',
-      phone: '+94 71 987 6543',
-      ordersCount: 14,
-      totalSpent: 42800,
-      status: 'Active',
-    },
-    {
-      id: 'c3',
-      name: 'Kasun Jayawardena',
-      email: 'kasun@yahoo.com',
-      phone: '+94 75 444 3322',
-      ordersCount: 5,
-      totalSpent: 12400,
-      status: 'Active',
-    },
-    {
-      id: 'c4',
-      name: 'Nimesha Fernando',
-      email: 'nimesha@hotmail.com',
-      phone: '+94 72 555 6677',
-      ordersCount: 2,
-      totalSpent: 4500,
-      status: 'Inactive',
-    },
-  ];
+  const loadCustomers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const fetched = await authService.getAllCustomers();
+      setCustomers(fetched);
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to load customers';
+      setError(msg);
+      console.error('[AdminCustomers] Error:', msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const filteredCustomers = mockCustomers.filter((c) =>
-    c.name.toLowerCase().includes(query.toLowerCase()) ||
-    c.email.toLowerCase().includes(query.toLowerCase())
+  useFocusEffect(
+    useCallback(() => {
+      loadCustomers();
+    }, [loadCustomers])
+  );
+
+  const filteredCustomers = customers.filter((c) =>
+    (c.name || '').toLowerCase().includes(query.toLowerCase()) ||
+    (c.email || '').toLowerCase().includes(query.toLowerCase())
   );
 
   return (
@@ -69,7 +57,17 @@ export default function AdminCustomersScreen() {
         />
       </View>
 
-      {filteredCustomers.length === 0 ? (
+      {loading ? (
+        <LoadingState message="Loading customers from database..." />
+      ) : error ? (
+        <EmptyState
+          iconName="alert-circle-outline"
+          title="Could Not Load Customers"
+          description={`Error: ${error}\n\nMake sure you are logged in as admin.`}
+          buttonTitle="Retry"
+          onButtonPress={loadCustomers}
+        />
+      ) : filteredCustomers.length === 0 ? (
         <EmptyState
           iconName="people-outline"
           title="No Customers Found"

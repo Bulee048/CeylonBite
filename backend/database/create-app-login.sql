@@ -28,6 +28,23 @@ BEGIN
 END
 GO
 
+-- 2b. Grant CONNECT on the default TDS TCP endpoint.
+-- Required on SQL Server 2022+ / 2025 where SQL logins can otherwise fail with
+-- "Login lacks connect endpoint permission" even though the public role has CONNECT.
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.server_permissions p
+    JOIN sys.server_principals prin ON p.grantee_principal_id = prin.principal_id
+    WHERE prin.name = 'CeylonBiteAppUser'
+      AND p.permission_name = 'CONNECT'
+      AND p.major_id = (SELECT endpoint_id FROM sys.endpoints WHERE name = 'TSQL Default TCP')
+)
+BEGIN
+    GRANT CONNECT ON ENDPOINT::[TSQL Default TCP] TO [CeylonBiteAppUser];
+    PRINT '✅ Granted CONNECT on TSQL Default TCP endpoint to CeylonBiteAppUser.';
+END
+GO
+
 -- 3. Grant Specific Least-Privilege Permissions on Application Tables
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.Users TO [CeylonBiteAppUser];
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.Categories TO [CeylonBiteAppUser];
@@ -35,6 +52,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.Foods TO [CeylonBiteAppUser];
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.Orders TO [CeylonBiteAppUser];
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.OrderItems TO [CeylonBiteAppUser];
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.Favorites TO [CeylonBiteAppUser];
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.PromoCodes TO [CeylonBiteAppUser];
+GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.Extras TO [CeylonBiteAppUser];
 
 PRINT '✅ Least-privilege permissions (SELECT, INSERT, UPDATE, DELETE) granted to CeylonBiteAppUser on CeylonBiteDB tables.';
 GO

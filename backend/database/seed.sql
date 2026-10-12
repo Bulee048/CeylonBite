@@ -40,3 +40,13 @@ BEGIN
     (@DrinksCatID, 'Lime Mojito', 'Refreshing crushed mint and fresh island lime soda served iced.', 650.00, 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?q=80&w=800', 4.7, 1, 0);
 END;
 GO
+
+-- 3. Insert Extras (server-authoritative add-on catalog)
+IF NOT EXISTS (SELECT * FROM Extras WHERE Name = 'Extra Cheese')
+BEGIN
+    INSERT INTO Extras (Name, Price, IsAvailable, SortOrder) VALUES
+    ('Extra Cheese', 250.00, 1, 1),
+    ('Extra Chicken', 450.00, 1, 2),
+    ('Signature Sauce', 150.00, 1, 3);
+END;
+GO

@@ -10,6 +10,7 @@ import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
 import { useAuthStore } from '../../store/authStore';
+import { isValidEmail } from '../../utils';
 
 const logoImg = require('../../assets/images/logo.png');
 
@@ -28,7 +29,7 @@ export default function RegisterScreen() {
       Alert.alert('Validation Error', 'Full Name is required.');
       return;
     }
-    if (!email.trim() || !email.includes('@')) {
+    if (!isValidEmail(email)) {
       Alert.alert('Validation Error', 'Please enter a valid email address.');
       return;
     }

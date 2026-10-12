@@ -1,14 +1,17 @@
 import { create } from 'zustand';
-import { mockDetailedOrders, DetailedOrder, TrackStatus } from '../data/mockOrders';
+import { DetailedOrder, TrackStatus } from '../types';
 
 interface AdminOrderStore {
   orders: DetailedOrder[];
+  setOrders: (orders: DetailedOrder[]) => void;
   updateOrderStatus: (id: string, newStatus: TrackStatus) => void;
   getOrderById: (id: string) => DetailedOrder | undefined;
 }
 
 export const useAdminOrderStore = create<AdminOrderStore>((set, get) => ({
-  orders: mockDetailedOrders,
+  orders: [],
+
+  setOrders: (orders) => set({ orders }),
 
   updateOrderStatus: (id, newStatus) => {
     set((state) => ({

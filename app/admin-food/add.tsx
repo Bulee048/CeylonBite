@@ -11,7 +11,8 @@ import Radius from '../../constants/radius';
 import { useAdminMenuStore } from '../../store/adminMenuStore';
 
 export default function AdminAddFoodScreen() {
-  const addFood = useAdminMenuStore((state) => state.addFood);
+  const createItem = useAdminMenuStore((state) => state.createItem);
+  const storeLoading = useAdminMenuStore((state) => state.loading);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -22,8 +23,7 @@ export default function AdminAddFoodScreen() {
   const [isPopular, setIsPopular] = useState(false);
   const [isAvailable, setIsAvailable] = useState(true);
 
-  const handleAddFood = () => {
-    // Validation
+  const handleAddFood = async () => {
     if (!name.trim()) {
       Alert.alert('Validation Error', 'Food name is required.');
       return;
@@ -31,7 +31,7 @@ export default function AdminAddFoodScreen() {
 
     const numericPrice = parseFloat(price);
     if (isNaN(numericPrice) || numericPrice <= 0) {
-      Alert.alert('Validation Error', 'Price must be greater than 0.');
+      Alert.alert('Validation Error', 'Price must be a valid number greater than 0.');
       return;
     }
 
@@ -40,7 +40,12 @@ export default function AdminAddFoodScreen() {
       return;
     }
 
-    addFood({
+    if (image.trim() && !image.trim().startsWith('http://') && !image.trim().startsWith('https://')) {
+      Alert.alert('Validation Error', 'Image URL must start with http:// or https://');
+      return;
+    }
+
+    const { error } = await createItem({
       name: name.trim(),
       description: description.trim() || 'Delicious CeylonBite meal made fresh.',
       price: numericPrice,
@@ -50,6 +55,11 @@ export default function AdminAddFoodScreen() {
       isPopular,
       isAvailable,
     });
+
+    if (error) {
+      Alert.alert('Create Failed', error);
+      return;
+    }
 
     Alert.alert('Success', `${name} added to CeylonBite Menu!`, [
       {
@@ -137,7 +147,12 @@ export default function AdminAddFoodScreen() {
           />
         </View>
 
-        <AppButton title="Add Item to Menu" onPress={handleAddFood} style={styles.submitBtn} />
+        <AppButton
+          title={storeLoading ? "Creating Item..." : "Add Item to Menu"}
+          onPress={handleAddFood}
+          disabled={storeLoading}
+          style={styles.submitBtn}
+        />
       </View>
     </ScreenContainer>
   );

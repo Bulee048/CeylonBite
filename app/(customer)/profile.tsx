@@ -22,7 +22,7 @@ export default function ProfileScreen() {
   const openEditModal = () => {
     setFullName(profile?.fullName || '');
     setPhone(profile?.phone || '');
-    setAddress(profile?.address || 'Colombo 03, Sri Lanka');
+    setAddress(profile?.address || '');
     setIsEditing(true);
   };
 
@@ -31,8 +31,14 @@ export default function ProfileScreen() {
       Alert.alert('Validation Error', 'Full Name cannot be empty.');
       return;
     }
+    const cleanPhone = phone.trim();
+    if (cleanPhone && !/^(\+94\d{9}|0\d{9})$/.test(cleanPhone)) {
+      Alert.alert('Validation Error', 'Phone number must be a valid Sri Lankan format (+94XXXXXXXXX or 07XXXXXXXX).');
+      return;
+    }
+
     setSaving(true);
-    const res = await updateProfile(fullName.trim(), phone.trim(), address.trim());
+    const res = await updateProfile(fullName.trim(), cleanPhone, address.trim());
     setSaving(false);
     if (res.error) {
       Alert.alert('Update Failed', res.error);
@@ -43,8 +49,8 @@ export default function ProfileScreen() {
   };
 
   const profileMenuItems = [
-    { icon: 'person-outline', title: 'Personal Information', subtitle: profile?.fullName || 'Dulmin Silva', action: openEditModal },
-    { icon: 'location-outline', title: 'Delivery Addresses', subtitle: profile?.address || 'Colombo 03, Sri Lanka', action: openEditModal },
+    { icon: 'person-outline', title: 'Personal Information', subtitle: profile?.fullName || 'Add your name', action: openEditModal },
+    { icon: 'location-outline', title: 'Delivery Addresses', subtitle: profile?.address || 'Add your address', action: openEditModal },
     { icon: 'heart-outline', title: 'My Favorites', route: '/(customer)/favorites' },
     { icon: 'notifications-outline', title: 'Notifications', subtitle: 'Promotions, order alerts' },
     { icon: 'card-outline', title: 'Payment Methods', subtitle: 'Cash on delivery, Card' },
@@ -78,14 +84,14 @@ export default function ProfileScreen() {
       <View style={styles.userCard}>
         <View style={styles.avatarCircle}>
           <Text style={styles.avatarLetter}>
-            {(profile?.fullName || 'Dulmin').charAt(0)}
+            {(profile?.fullName || '?').charAt(0)}
           </Text>
           <TouchableOpacity style={styles.editAvatarBadge} onPress={openEditModal} activeOpacity={0.8}>
             <Ionicons name="pencil" size={14} color={Colors.white} />
           </TouchableOpacity>
         </View>
-        <Text style={styles.nameText}>{profile?.fullName || 'Dulmin Silva'}</Text>
-        <Text style={styles.emailText}>{profile?.email || user?.email || 'dulmin@example.com'}</Text>
+        <Text style={styles.nameText}>{profile?.fullName || 'Your Profile'}</Text>
+        <Text style={styles.emailText}>{profile?.email || user?.email || ''}</Text>
         {profile?.phone ? <Text style={styles.phoneText}>📞 {profile.phone}</Text> : null}
 
         <TouchableOpacity style={styles.editBtn} onPress={openEditModal} activeOpacity={0.7}>
@@ -94,23 +100,25 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Switch to Admin Mode Banner */}
-      <View style={styles.adminBanner}>
-        <View style={styles.adminLeft}>
-          <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
-          <View style={styles.adminTextGroup}>
-            <Text style={styles.adminTitle}>Restaurant Management</Text>
-            <Text style={styles.adminSub}>Preview Admin Dashboard</Text>
+      {/* Switch to Admin Mode Banner (admin role only) */}
+      {user?.role === 'admin' && (
+        <View style={styles.adminBanner}>
+          <View style={styles.adminLeft}>
+            <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
+            <View style={styles.adminTextGroup}>
+              <Text style={styles.adminTitle}>Restaurant Management</Text>
+              <Text style={styles.adminSub}>Open Admin Dashboard</Text>
+            </View>
           </View>
+          <AppButton
+            title="Admin App"
+            onPress={() => router.replace('/(admin)/dashboard')}
+            size="small"
+            variant="secondary"
+            fullWidth={false}
+          />
         </View>
-        <AppButton
-          title="Admin App"
-          onPress={() => router.replace('/(admin)/dashboard')}
-          size="small"
-          variant="secondary"
-          fullWidth={false}
-        />
-      </View>
+      )}
 
       {/* Options List */}
       <View style={styles.menuCard}>

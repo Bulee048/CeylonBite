@@ -6,6 +6,7 @@ export interface User {
   email: string;
   role: UserRole;
   phone?: string;
+  address?: string;
   avatarUrl?: string;
 }
 
@@ -45,7 +46,7 @@ export interface CartItem {
   notes?: string;
 }
 
-export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'on_the_way' | 'delivered' | 'cancelled';
+export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
 
 export interface OrderItem {
   foodItemId: string;
@@ -63,4 +64,39 @@ export interface Order {
   totalAmount: number; // in LKR
   status: OrderStatus;
   createdAt: string;
+}
+
+// ---------- Order tracking & admin order detail model ----------
+
+export type TrackStatus = OrderStatus;
+
+export interface DetailOrderItem {
+  foodId: string;
+  name: string;
+  image: string;
+  quantity: number;
+  unitPrice: number;
+  customization?: string;
+}
+
+export interface DetailedOrder {
+  id: string; // e.g. CB1025
+  customerName?: string;
+  customerPhone?: string;
+  orderType?: string;
+  createdAt?: string;
+  type: 'active' | 'past';
+  status: TrackStatus;
+  statusText: string;
+  placedTime: string;
+  estimatedDelivery: string;
+  deliveryType: 'Home Delivery' | 'Store Pickup';
+  deliveryAddress: string;
+  paymentMethod: string;
+  items: DetailOrderItem[];
+  subtotal: number;
+  deliveryFee: number;
+  discount: number;
+  total: number;
+  totalAmount?: number;
 }

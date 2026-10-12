@@ -51,7 +51,8 @@ CeylonBite/
 │   │   ├── middleware/       # JWT auth & role guards
 │   │   └── server.js         # Listener (Port 5001)
 │   └── database/
-│       ├── schema.sql        # Tables & CHECK constraints
+│       ├── schema.sql        # Tables & CHECK constraints (fresh installs)
+│       ├── migrations/       # 001, 002, 003 — upgrade scripts for existing DBs
 │       ├── seed.sql          # Categories & Food menu items
 │       └── create-app-login.sql # Least-privilege DB User setup
 └── README.md
@@ -63,9 +64,11 @@ CeylonBite/
 
 ### 1. Database Setup (MS SQL Server + SSMS)
 1. Open **SSMS** and connect to your SQL Server instance (`localhost`).
-2. Run [backend/database/schema.sql](file:///c:/Users/Nethshan%20Dulmin/Desktop/CeylonBite/backend/database/schema.sql) to create `CeylonBiteDB`.
+2. Run [backend/database/schema.sql](file:///c:/Users/Nethshan%20Dulmin/Desktop/CeylonBite/backend/database/schema.sql) to create `CeylonBiteDB` (all tables, checks, and the `CEYLON20` promo code seed).
 3. Run [backend/database/seed.sql](file:///c:/Users/Nethshan%20Dulmin/Desktop/CeylonBite/backend/database/seed.sql) to insert menu items.
-4. Run [backend/database/create-app-login.sql](file:///c:/Users/Nethshan%20Dulmin/Desktop/CeylonBite/backend/database/create-app-login.sql) to configure `CeylonBiteAppUser`.
+4. Run [backend/database/create-app-login.sql](file:///c:/Users/Nethshan%20Dulmin/Desktop/CeylonBite/backend/database/create-app-login.sql) to configure the least-privilege login **`CeylonBiteAppUser`** (granted only `SELECT/INSERT/UPDATE/DELETE` on the app tables).
+
+> **Upgrading an existing database?** Run the migration scripts in `backend/database/migrations/` in order (`001`, `002`, `003`) **before** `seed.sql`. Fresh installs do not need them — `schema.sql` already contains everything. Migration `003` creates the `Extras` add-on catalog that the food-detail screen and order pricing require.
 
 ### 2. Backend Startup
 ```bash
@@ -75,6 +78,8 @@ npm run dev
 ```
 Health Check: `http://localhost:5001/api/health`
 
+> The backend connects to SQL Server with the least-privilege **`CeylonBiteAppUser`** account (see `backend/.env`). Copy `backend/.env.example` to `backend/.env` and confirm `DB_USER` / `DB_PASSWORD` match your `create-app-login.sql` run. Never use the `sa` admin account.
+
 ### 3. Frontend Startup
 ```bash
 # From project root
@@ -82,6 +87,48 @@ npm install
 npm start
 ```
 Press **`w`** to open Expo Web preview.
+
+> The frontend reads `EXPO_PUBLIC_API_URL` from `.env` (see `.env.example`). Android emulator: `http://10.0.2.2:5001/api`; physical device: your machine's LAN IP.
+
+### 4. Running from another IDE or machine (VS Code, WebStorm, …)
+
+The project is plain **Node.js + Expo**, so any IDE can run it — you just need **two terminals** (one for the API, one for the app). No IDE-specific config is required.
+
+**Before moving the project elsewhere — two important gotchas**
+1. **Uncommitted changes are not in `git`.** `git clone` only receives committed code. Either copy the whole project folder, or commit & push first:
+   ```bash
+   git add -A
+   git commit -m "your message"
+   git push
+   ```
+2. **`.env` and `backend/.env` are git-ignored**, so a clone will not include them. Recreate them from the templates and fill in your own values:
+   ```bash
+   copy .env.example .env
+   copy backend\.env.example backend\.env
+   ```
+   Then set `DB_PASSWORD` and `JWT_SECRET` in `backend/.env`.
+
+**VS Code**
+1. **File → Open Folder →** `CeylonBite`.
+2. **Terminal → New Terminal** (terminal 1):
+   ```bash
+   cd backend
+   npm install
+   npm run dev
+   ```
+3. **Terminal → New Terminal** (terminal 2), from the project root:
+   ```bash
+   npm install
+   npx expo start
+   ```
+4. In the Expo terminal press **`w`** (web), **`a`** (Android emulator), or scan the QR code with the Expo Go app.
+
+**WebStorm / IntelliJ / any IDE**
+- Open the `CeylonBite` folder, then use the built-in terminal with the exact commands above, or create two npm run configurations: `start` (root `package.json`) and `dev` (`backend/package.json`).
+
+**Requirements**
+- **Node.js 18+** (tested on Node 22).
+- **SQL Server** running locally on port **1433** with `CeylonBiteDB` created (see *Database Setup* above).
 
 ---
 

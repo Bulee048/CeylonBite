@@ -6,34 +6,47 @@ import Header from '../../components/common/Header';
 import CategoryChip from '../../components/food/CategoryChip';
 import FoodCard from '../../components/food/FoodCard';
 import LoadingState from '../../components/ui/LoadingState';
+import EmptyState from '../../components/ui/EmptyState';
 import Spacing from '../../constants/spacing';
 import { FoodItem, Category } from '../../types';
 import { useCartStore } from '../../store/cartStore';
 import { menuService } from '../../services/menuService';
+
+import { useFocusEffect } from 'expo-router';
 
 export default function MenuScreen() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [categories, setCategories] = useState<Category[]>([]);
   const [foods, setFoods] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const cartCount = useCartStore((state) => state.getItemCount());
+  const cartHydrated = useCartStore((state) => state.hasHydrated);
 
-  useEffect(() => {
-    loadData();
+  const loadData = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [fetchedCategories, fetchedFoods] = await Promise.all([
+        menuService.getCategories(),
+        menuService.getFoods(),
+      ]);
+      const cleanCategories = fetchedCategories.filter((c) => c.id !== 'all');
+      setCategories([{ id: 'all', name: 'All', iconName: 'restaurant-outline' }, ...cleanCategories]);
+      setFoods(fetchedFoods);
+    } catch (err: any) {
+      setError(err?.message || 'Could not load the menu. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const loadData = async () => {
-    setLoading(true);
-    const [fetchedCategories, fetchedFoods] = await Promise.all([
-      menuService.getCategories(),
-      menuService.getFoods(),
-    ]);
-    const cleanCategories = fetchedCategories.filter((c) => c.id !== 'all');
-    setCategories([{ id: 'all', name: 'All', iconName: 'restaurant-outline' }, ...cleanCategories]);
-    setFoods(fetchedFoods);
-    setLoading(false);
-  };
+  useFocusEffect(
+    React.useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const filteredItems = foods.filter(
     (item) => selectedCategory === 'all' || item.categoryId === selectedCategory
@@ -53,7 +66,7 @@ export default function MenuScreen() {
           title="CeylonBite Menu"
           subtitle="Explore our Sri Lankan fast food range"
           rightActionIcon="cart-outline"
-          badgeCount={cartCount}
+          badgeCount={cartHydrated ? cartCount : undefined}
           onRightAction={() => router.push('/cart')}
         />
       </View>
@@ -77,20 +90,32 @@ export default function MenuScreen() {
       </View>
 
       {/* Menu Items List */}
-      <FlatList
-        data={filteredItems}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <FoodCard
-            item={item}
-            variant="horizontal"
-            onPress={() => handleItemPress(item)}
-            onAddToCart={() => handleItemPress(item)}
-          />
-        )}
-      />
+      {loading ? (
+        <LoadingState message="Loading the menu..." />
+      ) : error ? (
+        <EmptyState
+          iconName="cloud-offline-outline"
+          title="Could Not Load Menu"
+          description={`${error}\n\nMake sure the server is reachable, then retry.`}
+          buttonTitle="Retry"
+          onButtonPress={loadData}
+        />
+      ) : (
+        <FlatList
+          data={filteredItems}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <FoodCard
+              item={item}
+              variant="horizontal"
+              onPress={() => handleItemPress(item)}
+              onAddToCart={() => handleItemPress(item)}
+            />
+          )}
+        />
+      )}
     </ScreenContainer>
   );
 }

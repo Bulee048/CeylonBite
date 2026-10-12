@@ -14,10 +14,12 @@ import { useAdminMenuStore } from '../../store/adminMenuStore';
 export default function AdminEditFoodScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const getFoodById = useAdminMenuStore((state) => state.getFoodById);
-  const updateFood = useAdminMenuStore((state) => state.updateFood);
-  const deleteFood = useAdminMenuStore((state) => state.deleteFood);
+  const updateItem = useAdminMenuStore((state) => state.updateItem);
+  const deleteItem = useAdminMenuStore((state) => state.deleteItem);
+  const fetchItems = useAdminMenuStore((state) => state.fetchItems);
+  const storeLoading = useAdminMenuStore((state) => state.loading);
 
-  const existingFood = getFoodById(id || '');
+  const [existingFood, setExistingFood] = useState(getFoodById(id || ''));
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -29,17 +31,26 @@ export default function AdminEditFoodScreen() {
   const [isAvailable, setIsAvailable] = useState(true);
 
   useEffect(() => {
-    if (existingFood) {
-      setName(existingFood.name);
-      setDescription(existingFood.description);
-      setPrice(existingFood.price.toString());
-      setCategoryId(existingFood.categoryId);
-      setImage(existingFood.image);
-      setRating((existingFood.rating || 4.5).toString());
-      setIsPopular(existingFood.isPopular || false);
-      setIsAvailable(existingFood.isAvailable !== false);
-    }
-  }, [existingFood]);
+    const init = async () => {
+      let food = getFoodById(id || '');
+      if (!food) {
+        await fetchItems();
+        food = useAdminMenuStore.getState().getFoodById(id || '');
+      }
+      setExistingFood(food);
+      if (food) {
+        setName(food.name);
+        setDescription(food.description);
+        setPrice(food.price.toString());
+        setCategoryId(food.categoryId);
+        setImage(food.image);
+        setRating((food.rating || 4.5).toString());
+        setIsPopular(food.isPopular || false);
+        setIsAvailable(food.isAvailable !== false);
+      }
+    };
+    init();
+  }, [id]);
 
   if (!existingFood) {
     return (
@@ -56,7 +67,7 @@ export default function AdminEditFoodScreen() {
     );
   }
 
-  const handleSaveChanges = () => {
+  const handleSaveChanges = async () => {
     if (!name.trim()) {
       Alert.alert('Validation Error', 'Food name is required.');
       return;
@@ -64,7 +75,7 @@ export default function AdminEditFoodScreen() {
 
     const numericPrice = parseFloat(price);
     if (isNaN(numericPrice) || numericPrice <= 0) {
-      Alert.alert('Validation Error', 'Price must be greater than 0.');
+      Alert.alert('Validation Error', 'Price must be a valid number greater than 0.');
       return;
     }
 
@@ -73,7 +84,12 @@ export default function AdminEditFoodScreen() {
       return;
     }
 
-    updateFood(existingFood.id, {
+    if (image.trim() && !image.trim().startsWith('http://') && !image.trim().startsWith('https://')) {
+      Alert.alert('Validation Error', 'Image URL must start with http:// or https://');
+      return;
+    }
+
+    const { error } = await updateItem(existingFood.id, {
       name: name.trim(),
       description: description.trim(),
       price: numericPrice,
@@ -83,6 +99,11 @@ export default function AdminEditFoodScreen() {
       isPopular,
       isAvailable,
     });
+
+    if (error) {
+      Alert.alert('Update Failed', error);
+      return;
+    }
 
     Alert.alert('Changes Saved', `${name} has been updated successfully!`, [
       { text: 'OK', onPress: () => router.back() },
@@ -95,9 +116,13 @@ export default function AdminEditFoodScreen() {
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: () => {
-          deleteFood(existingFood.id);
-          router.back();
+        onPress: async () => {
+          const { error } = await deleteItem(existingFood.id);
+          if (error) {
+            Alert.alert('Delete Failed', error);
+          } else {
+            router.back();
+          }
         },
       },
     ]);
@@ -153,8 +178,19 @@ export default function AdminEditFoodScreen() {
           />
         </View>
 
-        <AppButton title="Save Changes" onPress={handleSaveChanges} style={styles.submitBtn} />
-        <AppButton title="Delete Item" onPress={handleDeleteItem} variant="outline" style={styles.deleteBtn} />
+        <AppButton
+          title={storeLoading ? "Saving..." : "Save Changes"}
+          onPress={handleSaveChanges}
+          disabled={storeLoading}
+          style={styles.submitBtn}
+        />
+        <AppButton
+          title="Delete Item"
+          onPress={handleDeleteItem}
+          disabled={storeLoading}
+          variant="outline"
+          style={styles.deleteBtn}
+        />
       </View>
     </ScreenContainer>
   );

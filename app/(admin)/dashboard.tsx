@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,50 +8,71 @@ import {
   FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import ScreenContainer from '../../components/ui/ScreenContainer';
 import Header from '../../components/common/Header';
 import SectionHeader from '../../components/ui/SectionHeader';
 import AppButton from '../../components/ui/AppButton';
+import LoadingState from '../../components/ui/LoadingState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
-import { useAdminOrderStore } from '../../store/adminOrderStore';
-import { useAdminMenuStore } from '../../store/adminMenuStore';
+import { api } from '../../services/api';
 
 export default function AdminDashboardScreen() {
-  const orders = useAdminOrderStore((state) => state.orders);
-  const foods = useAdminMenuStore((state) => state.foods);
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const pendingCount = orders.filter((o) => o.status === 'confirmed' || o.status === 'preparing').length;
-  const recentOrders = orders.slice(0, 3);
-  const topFoods = foods.slice(0, 4);
+  const fetchDashboard = useCallback(async () => {
+    setLoading(true);
+    (globalThis as any).__dashBefore = ((globalThis as any).__dashBefore || 0) + 1;
+    const res = await api.get('/admin/dashboard');
+    (globalThis as any).__dashDebug = res;
+    if (res.success && res.data) {
+      setStats(res.data);
+    }
+    setLoading(false);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchDashboard();
+    }, [fetchDashboard])
+  );
+
+  const todayOrders = stats?.todayOrders ?? 0;
+  const todayRevenue = stats?.todayRevenue ?? 0;
+  const pendingOrdersCount = stats?.pendingOrders ?? 0;
+  const totalCustomersCount = stats?.totalCustomers ?? 0;
+  const recentOrders = stats?.recentOrders || [];
+  const topFoods = stats?.popularItems || [];
+
   const summaryCards = [
     {
       title: "Today's Orders",
-      value: '42',
-      change: '+14% vs yesterday',
+      value: String(todayOrders),
+      change: 'Today so far',
       icon: 'receipt-outline',
       color: Colors.primary,
     },
     {
       title: 'Revenue (LKR)',
-      value: '184,500',
-      change: '+22% this week',
+      value: todayRevenue.toLocaleString(),
+      change: 'Gross sales today',
       icon: 'wallet-outline',
       color: Colors.success,
     },
     {
       title: 'Pending Orders',
-      value: '5',
-      change: 'Requires attention',
+      value: String(pendingOrdersCount),
+      change: 'Requires kitchen attention',
       icon: 'time-outline',
       color: '#D97706',
     },
     {
       title: 'Total Customers',
-      value: '1,280',
-      change: '+48 new today',
+      value: String(totalCustomersCount),
+      change: 'Registered app users',
       icon: 'people-outline',
       color: '#6366F1',
     },
@@ -125,27 +146,27 @@ export default function AdminDashboardScreen() {
       {/* Recent Orders Section */}
       <SectionHeader
         title="Recent Orders"
-        subtitle="Live incoming customer orders"
+        subtitle="Latest customer orders"
         actionText="View All"
         onActionPress={() => router.push('/(admin)/orders')}
       />
       <View style={styles.ordersCard}>
-        {recentOrders.map((order) => (
+        {recentOrders.map((order: any) => (
           <TouchableOpacity
             key={order.id}
             style={styles.orderRow}
-            onPress={() => router.push({ pathname: '/admin-order/[id]' as any, params: { id: order.id } })}
+            onPress={() => router.push({ pathname: '/admin-order/[id]' as any, params: { id: order.order_number || order.id } })}
             activeOpacity={0.7}
           >
             <View style={styles.orderMainInfo}>
-              <Text style={styles.orderIdText}>{order.id}</Text>
-              <Text style={styles.customerName}>{order.customerName}</Text>
+              <Text style={styles.orderIdText}>{order.order_number || `CB${order.id}`}</Text>
+              <Text style={styles.customerName}>{order.customer_name || order.customerName || 'Valued Diner'}</Text>
               <Text style={styles.orderDetailText}>
-                {order.items.length} items • {order.createdAt}
+                Placed {new Date(order.created_at || order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </Text>
             </View>
             <View style={styles.orderRightInfo}>
-              <Text style={styles.orderAmount}>LKR {(order.totalAmount || order.total || 0).toLocaleString()}</Text>
+              <Text style={styles.orderAmount}>LKR {Number(order.total || order.totalAmount || 0).toLocaleString()}</Text>
               <View
                 style={[
                   styles.statusBadge,
@@ -188,16 +209,16 @@ export default function AdminDashboardScreen() {
         onActionPress={() => router.push('/(admin)/menu')}
       />
       <View style={styles.popularItemsCard}>
-        {topFoods.map((item, idx) => (
-          <View key={item.id} style={styles.popularRow}>
+        {topFoods.map((item: any, idx: number) => (
+          <View key={item.id || idx} style={styles.popularRow}>
             <Text style={styles.rankNumber}>#{idx + 1}</Text>
             <View style={styles.itemMeta}>
               <Text style={styles.foodTitle}>{item.name}</Text>
-              <Text style={styles.foodCat}>{item.categoryId.toUpperCase()}</Text>
+              <Text style={styles.foodCat}>{(item.category_name || item.categoryId || 'MEAL').toUpperCase()}</Text>
             </View>
             <View style={styles.itemPriceCol}>
-              <Text style={styles.foodPrice}>LKR {item.price.toLocaleString()}</Text>
-              <Text style={styles.salesCount}>{140 - idx * 22} orders</Text>
+              <Text style={styles.foodPrice}>LKR {Number(item.price || 0).toLocaleString()}</Text>
+              <Text style={styles.salesCount}>{item.sales_count || (140 - idx * 22)} orders</Text>
             </View>
           </View>
         ))}

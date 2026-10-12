@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,20 +6,64 @@ import ScreenContainer from '../../components/ui/ScreenContainer';
 import Header from '../../components/common/Header';
 import AppButton from '../../components/ui/AppButton';
 import EmptyState from '../../components/ui/EmptyState';
+import LoadingState from '../../components/ui/LoadingState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
 import { OrderStatus } from '../../types';
-import { TrackStatus } from '../../data/mockOrders';
+import { TrackStatus, DetailedOrder } from '../../types';
 import { useAdminOrderStore } from '../../store/adminOrderStore';
 import { orderService } from '../../services/orderService';
+
+// Mirrors the server-side lifecycle enforcement in orderController.
+// Forward-only progression plus cancel; delivered/cancelled are terminal.
+const ORDER_TRANSITIONS: Record<TrackStatus, TrackStatus[]> = {
+  pending: ['confirmed', 'cancelled'],
+  confirmed: ['preparing', 'cancelled'],
+  preparing: ['ready', 'cancelled'],
+  ready: ['delivered', 'cancelled'],
+  delivered: [],
+  cancelled: [],
+};
 
 export default function AdminOrderDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const getOrderById = useAdminOrderStore((state) => state.getOrderById);
   const updateOrderStatus = useAdminOrderStore((state) => state.updateOrderStatus);
 
-  const order = getOrderById(id || '');
+  const [order, setOrder] = useState<DetailedOrder | null | undefined>(undefined);
+  const [loading, setLoading] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
+  useEffect(() => {
+    const loadOrder = async () => {
+      if (!id) return;
+
+      // First try the in-memory store (fast path)
+      const storeOrder = getOrderById(id);
+      if (storeOrder) {
+        setOrder(storeOrder);
+        return;
+      }
+
+      // Fallback: fetch directly from API (handles direct URL navigation / fresh load)
+      setLoading(true);
+      const fetchedOrder = await orderService.getOrderById(id);
+      setOrder(fetchedOrder);
+      setLoading(false);
+    };
+
+    loadOrder();
+  }, [id]);
+
+  if (loading || order === undefined) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <Header title="Order Details" showBack />
+        <LoadingState message="Loading order details..." />
+      </ScreenContainer>
+    );
+  }
 
   if (!order) {
     return (
@@ -36,19 +80,39 @@ export default function AdminOrderDetailsScreen() {
     );
   }
 
-  const statuses: TrackStatus[] = ['confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
+  // Only offer the current status plus the transitions the backend will accept.
+  const availableStatuses: TrackStatus[] = [
+    order.status,
+    ...(ORDER_TRANSITIONS[order.status] || []),
+  ];
 
   const handleUpdateStatus = async (newStatus: TrackStatus) => {
+    if (updating || newStatus === order.status) return;
+
+    const previousStatus = order.status;
+    setUpdating(true);
+
+    // Optimistic local update
     updateOrderStatus(order.id, newStatus);
+    setOrder((prev) => prev ? { ...prev, status: newStatus } : prev);
+
     const { error } = await orderService.updateOrderStatus(order.id, newStatus);
+
+    setUpdating(false);
+
     if (error) {
-      console.warn('Note on status update:', error);
+      // Revert the optimistic update and surface the real server error.
+      updateOrderStatus(order.id, previousStatus);
+      setOrder((prev) => prev ? { ...prev, status: previousStatus } : prev);
+      Alert.alert('Status Not Updated', error);
+      return;
     }
+
     Alert.alert('Status Updated', `Order ${order.id} is now set to "${newStatus.replace(/_/g, ' ')}".`);
   };
 
   const handleContactCustomer = () => {
-    Alert.alert('Contact Customer', `Calling ${order.customerName || 'Customer'} at +94 77 123 4567...`);
+    Alert.alert('Contact Customer', `Calling ${order.customerName || 'Customer'}...`);
   };
 
   return (
@@ -66,13 +130,14 @@ export default function AdminOrderDetailsScreen() {
 
         <Text style={styles.sectionSubtitle}>Quick Status Update:</Text>
         <View style={styles.statusButtonsRow}>
-          {statuses.map((st) => {
+          {availableStatuses.map((st) => {
             const isActive = order.status === st;
             return (
               <TouchableOpacity
                 key={st}
                 style={[styles.statusBtn, isActive && styles.statusBtnActive]}
                 onPress={() => handleUpdateStatus(st)}
+                disabled={updating}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.statusBtnText, isActive && styles.statusBtnTextActive]}>
@@ -90,9 +155,8 @@ export default function AdminOrderDetailsScreen() {
           <Ionicons name="person-outline" size={18} color={Colors.primaryOrange} />
           <Text style={styles.cardHeaderTitle}>Customer Information</Text>
         </View>
-        <Text style={styles.infoTextName}>{order.customerName || 'Dulmin Silva'}</Text>
-        <Text style={styles.infoTextSub}>dulmin@example.com</Text>
-        <Text style={styles.infoTextSub}>+94 77 123 4567</Text>
+        <Text style={styles.infoTextName}>{order.customerName || 'Customer'}</Text>
+        <Text style={styles.infoTextSub}>{order.deliveryAddress || 'No address provided'}</Text>
 
         <View style={styles.divider} />
 
@@ -100,7 +164,7 @@ export default function AdminOrderDetailsScreen() {
           <Ionicons name="location-outline" size={18} color={Colors.primaryOrange} />
           <Text style={styles.cardHeaderTitle}>Delivery / Pickup Address</Text>
         </View>
-        <Text style={styles.infoTextAddress}>{order.deliveryAddress}</Text>
+        <Text style={styles.infoTextAddress}>{order.deliveryAddress || 'No address provided'}</Text>
 
         <AppButton
           title="Contact Customer"

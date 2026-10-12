@@ -19,7 +19,7 @@ export const authService = {
         fullName: res.data.fullName || res.data.full_name,
         email: res.data.email,
         phone: res.data.phone,
-        address: res.data.address || res.data.DeliveryAddress || 'Colombo 03, Sri Lanka',
+        address: res.data.address || res.data.Address || '',
         role: res.data.role,
       };
     }
@@ -47,6 +47,6 @@ export const authService = {
         status: c.isActive !== false ? 'Active' : 'Inactive',
       }));
     }
-    return [];
+    throw new Error(res.message || 'Failed to load customers from server');
   },
 };

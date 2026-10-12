@@ -2,10 +2,10 @@ const mssql = require('mssql');
 require('dotenv').config();
 
 const config = {
-  user: process.env.DB_USER || 'ceylonuser',
-  password: process.env.DB_PASSWORD || 'CeylonBitePassword123!',
+  user: process.env.DB_USER || 'CeylonBiteAppUser',
+  password: process.env.DB_PASSWORD || 'CeylonBiteAppSecurePass2026!',
   server: process.env.DB_SERVER || 'localhost',
-  port: parseInt(process.env.DB_PORT || '1434', 10),
+  port: parseInt(process.env.DB_PORT || '1433', 10),
   database: process.env.DB_DATABASE || 'CeylonBiteDB',
   options: {
     encrypt: false,
@@ -30,7 +30,7 @@ const getPool = async () => {
         return pool;
       })
       .catch((err) => {
-        console.warn('⚠️ SQL Server Connection Warning:', err.message);
+        console.warn('⚠️ SQL Server Connection Error:', err.message);
         poolPromise = null;
         throw err;
       });

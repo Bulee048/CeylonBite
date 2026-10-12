@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,16 +15,39 @@ import ScreenContainer from '../../components/ui/ScreenContainer';
 import Header from '../../components/common/Header';
 import AppButton from '../../components/ui/AppButton';
 import EmptyState from '../../components/ui/EmptyState';
+import LoadingState from '../../components/ui/LoadingState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
-import { mockDetailedOrders, TrackStatus } from '../../data/mockOrders';
+import { DetailedOrder, TrackStatus } from '../../types';
+import { orderService } from '../../services/orderService';
 
 export default function OrderTrackingScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [order, setOrder] = useState<DetailedOrder | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Retrieve order details by ID
-  const order = mockDetailedOrders.find((o) => o.id === id || o.id === `CB${id}`);
+  const fetchOrder = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    const fetched = await orderService.getOrderById(id);
+    setOrder(fetched);
+    setLoading(false);
+  }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrder();
+    }, [fetchOrder])
+  );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <LoadingState message="Loading order details..." />
+      </SafeAreaView>
+    );
+  }
 
   // Safe fallback if order ID is invalid
   if (!order) {
@@ -81,11 +104,13 @@ export default function OrderTrackingScreen() {
 
   const getStepIndex = (st: TrackStatus) => {
     switch (st) {
+      case 'pending':
       case 'confirmed': return 0;
       case 'preparing': return 1;
       case 'ready': return 2;
       case 'delivered': return 3;
       case 'cancelled': return -1;
+      default: return 0;
     }
   };
 

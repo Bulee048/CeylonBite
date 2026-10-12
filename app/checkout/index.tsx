@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import ScreenContainer from '../../components/ui/ScreenContainer';
 import Header from '../../components/common/Header';
 import AppButton from '../../components/ui/AppButton';
 import EmptyState from '../../components/ui/EmptyState';
+import LoadingState from '../../components/ui/LoadingState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
@@ -23,10 +24,21 @@ import { useCartStore } from '../../store/cartStore';
 import { useAuthStore } from '../../store/authStore';
 import { orderService } from '../../services/orderService';
 
+import { api } from '../../services/api';
+import { isValidSriLankanPhone, toCanonicalPhone } from '../../utils';
+
 export default function CheckoutScreen() {
-  const { items, getSubtotal, clearCart } = useCartStore();
+  const { items, getSubtotal, clearCart, hasHydrated } = useCartStore();
   const { user, profile } = useAuthStore();
   const [loading, setLoading] = useState(false);
+  // Guards against duplicate submissions triggered by rapid taps (React state
+  // updates are async, so a boolean ref is the reliable lock).
+  const submittingRef = useRef(false);
+
+  // Editable customer info initialized from logged-in user profile
+  const [customerName, setCustomerName] = useState(profile?.fullName || user?.fullName || 'Valued Diner');
+  const [customerPhone, setCustomerPhone] = useState(profile?.phone || '');
+  const [deliveryAddress, setDeliveryAddress] = useState(profile?.address || '');
 
   // Local state options
   const [orderType, setOrderType] = useState<'delivery' | 'pickup'>('delivery');
@@ -34,10 +46,12 @@ export default function CheckoutScreen() {
   const [scheduledTime, setScheduledTime] = useState<string>('7:00 PM');
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'card' | 'wallet'>('cod');
   
-  // Promo code local state
+  // Promo code API state
   const [promoCodeInput, setPromoCodeInput] = useState('');
-  const [appliedDiscountRate, setAppliedDiscountRate] = useState(0); // 0.2 for 20%
+  const [appliedDiscountAmount, setAppliedDiscountAmount] = useState(0);
+  const [appliedPromoCode, setAppliedPromoCode] = useState<string | undefined>(undefined);
   const [promoStatus, setPromoStatus] = useState<{ message: string; isError: boolean } | null>(null);
+  const [promoLoading, setPromoLoading] = useState(false);
 
   // Delivery instructions
   const [deliveryInstructions, setDeliveryInstructions] = useState('');
@@ -45,69 +59,156 @@ export default function CheckoutScreen() {
   // Calculations
   const subtotal = getSubtotal();
   const deliveryFee = orderType === 'delivery' ? (subtotal > 0 ? 350 : 0) : 0;
-  const discountAmount = Math.round(subtotal * appliedDiscountRate);
-  const grandTotal = Math.max(0, subtotal + deliveryFee - discountAmount);
+  const grandTotal = Math.max(0, subtotal + deliveryFee - appliedDiscountAmount);
+
+  // The backend recomputes the discount from the authoritative subtotal at order
+  // time. If the cart subtotal changes after a promo was applied, the locally
+  // displayed discount can go stale, so clear it and ask the user to re-apply.
+  // This keeps the displayed total consistent with the server-calculated total.
+  const prevSubtotalRef = useRef(subtotal);
+  useEffect(() => {
+    if (prevSubtotalRef.current !== subtotal) {
+      prevSubtotalRef.current = subtotal;
+      if (appliedPromoCode) {
+        setAppliedDiscountAmount(0);
+        setAppliedPromoCode(undefined);
+        setPromoStatus({
+          message: 'Cart total changed — please re-apply your promo code.',
+          isError: true,
+        });
+      }
+    }
+  }, [subtotal, appliedPromoCode]);
 
   const scheduleTimeOptions = ['6:30 PM', '7:00 PM', '7:30 PM', '8:00 PM'];
 
-  // Apply promo code handler
-  const handleApplyPromo = () => {
+  // Apply promo code handler calling backend API
+  const handleApplyPromo = async () => {
+    if (promoLoading) return;
     const cleanCode = promoCodeInput.trim().toUpperCase();
-    if (cleanCode === 'CEYLON20') {
-      setAppliedDiscountRate(0.2); // 20% discount
-      setPromoStatus({ message: 'Promo applied! 20% discount added.', isError: false });
-    } else if (cleanCode === '') {
-      setAppliedDiscountRate(0);
+    if (!cleanCode) {
+      setAppliedDiscountAmount(0);
+      setAppliedPromoCode(undefined);
       setPromoStatus(null);
+      return;
+    }
+
+    setPromoLoading(true);
+    setPromoStatus(null);
+    const res = await api.post('/promo/validate', { code: cleanCode, subtotal });
+    setPromoLoading(false);
+    if (res.success && res.data) {
+      setAppliedDiscountAmount(res.data.discountAmount);
+      setAppliedPromoCode(res.data.promoCode);
+      setPromoStatus({ message: `Promo "${res.data.promoCode}" applied! Discount: LKR ${res.data.discountAmount}`, isError: false });
     } else {
-      setAppliedDiscountRate(0);
-      setPromoStatus({ message: 'Invalid promo code. Try "CEYLON20".', isError: true });
+      setAppliedDiscountAmount(0);
+      setAppliedPromoCode(undefined);
+      setPromoStatus({ message: res.message || 'Invalid promo code', isError: true });
     }
   };
 
   // Place order handler
   const handlePlaceOrder = async () => {
     if (items.length === 0) return;
+    // Hard guard against duplicate submissions (e.g. rapid double-tap).
+    if (submittingRef.current || loading) return;
+
+    if (orderType === 'delivery') {
+      if (!customerPhone.trim()) {
+        Alert.alert('Validation Error', 'Phone number is required for delivery.');
+        return;
+      }
+      if (!isValidSriLankanPhone(customerPhone)) {
+        Alert.alert('Validation Error', 'Please enter a valid Sri Lankan phone number (+94XXXXXXXXX or 07XXXXXXXX).');
+        return;
+      }
+      if (!deliveryAddress.trim()) {
+        Alert.alert('Validation Error', 'Delivery address is required.');
+        return;
+      }
+    }
 
     const estTime = orderType === 'delivery' ? '25–30 min' : '15–20 min';
     const mappedPayment = paymentMethod === 'cod' ? 'cash' : paymentMethod === 'card' ? 'card' : 'wallet';
 
+    submittingRef.current = true;
     setLoading(true);
 
-    const { orderId, orderNumber, error } = await orderService.createOrder({
-      userId: user?.id || 'guest_id',
-      customerName: profile?.fullName || 'Dulmin Silva',
-      customerPhone: profile?.phone || '+94 77 123 4567',
-      deliveryAddress: orderType === 'delivery' ? 'No. 25, Galle Road, Colombo 03' : 'Store Pickup: Colombo 03',
-      deliveryInstructions,
-      orderType,
-      paymentMethod: mappedPayment,
-      items,
-      subtotal,
-      deliveryFee,
-      discount: discountAmount,
-      total: grandTotal,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      console.warn('Order creation note:', error);
+    let result: Awaited<ReturnType<typeof orderService.createOrder>> = {
+      orderId: null,
+      orderNumber: null,
+      subtotal: null,
+      deliveryFee: null,
+      discount: null,
+      total: null,
+      promoCode: null,
+      error: 'Order was not submitted.',
+    };
+    try {
+      result = await orderService.createOrder({
+        userId: user?.id || profile?.id || 1,
+        customerName: customerName.trim() || 'Valued Diner',
+        customerPhone: toCanonicalPhone(customerPhone),
+        deliveryAddress: orderType === 'delivery' ? deliveryAddress.trim() : 'Store Pickup: Colombo 03 Branch',
+        deliveryInstructions,
+        orderType,
+        paymentMethod: mappedPayment,
+        promoCode: appliedPromoCode,
+        items,
+        subtotal,
+        deliveryFee,
+        discount: appliedDiscountAmount,
+        total: grandTotal,
+      });
+    } finally {
+      submittingRef.current = false;
+      setLoading(false);
     }
 
-    // Always clear cart and navigate to success
+    const { orderNumber, error } = result;
+
+    // Only clear the cart / navigate AFTER the server has confirmed the order.
+    // On any failure the cart is left intact so the user can retry.
+    if (error || !orderNumber) {
+      Alert.alert('Order Failed', error || 'Failed to place order.');
+      return;
+    }
+
     clearCart();
+
+    // The backend is authoritative for billing. If the current DB price differed
+    // from the cart's estimate, show the server's real total (never the stale
+    // local one) and flag the adjustment on the confirmation screen.
+    const serverTotal = result.total !== null ? result.total : grandTotal;
+    const priceAdjusted =
+      result.total !== null && Math.abs(result.total - grandTotal) > 0.01;
 
     router.push({
       pathname: '/order/success' as any,
       params: {
-        orderNumber: orderNumber || `CB${Math.floor(1020 + Math.random() * 80)}`,
+        orderNumber,
         orderType: orderType === 'delivery' ? 'Home Delivery' : 'Store Pickup',
-        total: grandTotal.toLocaleString(),
+        total: serverTotal.toLocaleString(),
         estimatedTime: estTime,
+        priceAdjusted: priceAdjusted ? 'true' : 'false',
       },
     });
   };
+
+  // Hydration-safe: don't render the empty-cart guard (or the checkout form)
+  // until the persisted cart has been restored, otherwise a returning user
+  // would briefly (or permanently, if they tapped) see "Nothing to checkout".
+  if (!hasHydrated) {
+    return (
+      <ScreenContainer scrollable={false} hasPadding={false}>
+        <View style={styles.headerPadding}>
+          <Header title="Checkout" subtitle="Restoring your cart..." showBack />
+        </View>
+        <LoadingState message="Restoring your cart..." />
+      </ScreenContainer>
+    );
+  }
 
   // Empty cart protection
   if (items.length === 0) {
@@ -173,21 +274,33 @@ export default function CheckoutScreen() {
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Ionicons name="location" size={20} color={Colors.primary} />
-              <Text style={styles.cardTitle}>Delivery Address</Text>
+              <Text style={styles.cardTitle}>Delivery Information</Text>
             </View>
-            <View style={styles.addressBox}>
-              <View style={styles.addressInfo}>
-                <Text style={styles.addressName}>Dulmin Silva</Text>
-                <Text style={styles.addressText}>No. 25, Galle Road, Colombo 03</Text>
-                <Text style={styles.phoneText}>+94 77 123 4567</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => Alert.alert('Address Management', 'Address management will be added in a future update.')}
-                style={styles.changeBtn}
-              >
-                <Text style={styles.changeBtnText}>Change</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.inputLabelText}>Full Name *</Text>
+            <TextInput
+              style={styles.checkoutInput}
+              value={customerName}
+              onChangeText={setCustomerName}
+              placeholder="Your Full Name"
+              placeholderTextColor={Colors.secondaryText}
+            />
+            <Text style={styles.inputLabelText}>Phone Number * (+94XXXXXXXXX)</Text>
+            <TextInput
+              style={styles.checkoutInput}
+              value={customerPhone}
+              onChangeText={setCustomerPhone}
+              placeholder="e.g. +94771234567"
+              keyboardType="phone-pad"
+              placeholderTextColor={Colors.secondaryText}
+            />
+            <Text style={styles.inputLabelText}>Delivery Address *</Text>
+            <TextInput
+              style={styles.checkoutInput}
+              value={deliveryAddress}
+              onChangeText={setDeliveryAddress}
+              placeholder="House/Street/City Address"
+              placeholderTextColor={Colors.secondaryText}
+            />
           </View>
         ) : (
           <View style={styles.card}>
@@ -330,11 +443,12 @@ export default function CheckoutScreen() {
               autoCapitalize="characters"
             />
             <TouchableOpacity
-              style={styles.applyBtn}
+              style={[styles.applyBtn, promoLoading && styles.applyBtnDisabled]}
               onPress={handleApplyPromo}
+              disabled={promoLoading || items.length === 0}
               activeOpacity={0.8}
             >
-              <Text style={styles.applyBtnText}>Apply</Text>
+              <Text style={styles.applyBtnText}>{promoLoading ? 'Checking...' : 'Apply'}</Text>
             </TouchableOpacity>
           </View>
 
@@ -401,10 +515,10 @@ export default function CheckoutScreen() {
               {deliveryFee > 0 ? `LKR ${deliveryFee}` : 'Free'}
             </Text>
           </View>
-          {discountAmount > 0 && (
+          {appliedDiscountAmount > 0 && (
             <View style={styles.summaryRow}>
-              <Text style={styles.discountLabel}>Promo Discount (20%)</Text>
-              <Text style={styles.discountVal}>- LKR {discountAmount.toLocaleString()}</Text>
+              <Text style={styles.discountLabel}>Promo Discount</Text>
+              <Text style={styles.discountVal}>- LKR {appliedDiscountAmount.toLocaleString()}</Text>
             </View>
           )}
           <View style={styles.divider} />
@@ -424,11 +538,12 @@ export default function CheckoutScreen() {
           </View>
 
           <AppButton
-            title="Place Order"
+            title={loading ? 'Placing Order...' : 'Place Order'}
             onPress={handlePlaceOrder}
             size="medium"
             fullWidth={false}
-            disabled={items.length === 0}
+            loading={loading}
+            disabled={items.length === 0 || loading}
             style={styles.placeOrderBtn}
           />
         </View>
@@ -514,6 +629,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: Colors.primaryDark,
+  },
+  inputLabelText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primaryDark,
+    marginTop: Spacing.sm,
+    marginBottom: 4,
+  },
+  checkoutInput: {
+    backgroundColor: Colors.background,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.sm + 4,
+    paddingVertical: Spacing.sm,
+    fontSize: 14,
+    color: Colors.primaryDark,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
 
   // Address
@@ -692,6 +824,9 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontWeight: '700',
     fontSize: 13,
+  },
+  applyBtnDisabled: {
+    opacity: 0.6,
   },
   promoStatusText: {
     fontSize: 12,

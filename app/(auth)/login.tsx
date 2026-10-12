@@ -112,33 +112,6 @@ export default function LoginScreen() {
         </View>
       </View>
 
-      {/* Visually Separated Dev Preview Section */}
-      <View style={styles.devSection}>
-        <View style={styles.devHeader}>
-          <Ionicons name="code-slash-outline" size={14} color={Colors.primary} />
-          <Text style={styles.devTag}>DEV PREVIEW QUICK NAVIGATION</Text>
-        </View>
-        <View style={styles.devButtonRow}>
-          <TouchableOpacity
-            style={styles.devCustomerBtn}
-            onPress={() => router.replace('/(customer)/home')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="people-outline" size={16} color={Colors.primary} />
-            <Text style={styles.devCustomerText}>Preview Customer</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.devAdminBtn}
-            onPress={() => router.replace('/(admin)/dashboard')}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="stats-chart-outline" size={16} color={Colors.white} />
-            <Text style={styles.devAdminText}>Preview Admin</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
       {/* Subtle Brand Values Strip */}
       <View style={styles.brandValuesRow}>
         <View style={styles.valueItem}>
@@ -288,68 +261,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: Colors.primary,
-  },
-
-  // Dev Section
-  devSection: {
-    marginTop: Spacing.xl,
-    padding: Spacing.md,
-    backgroundColor: Colors.lightOrange,
-    borderRadius: Radius.lg,
-    width: '94%',
-    maxWidth: 420,
-    borderWidth: 1,
-    borderColor: Colors.primary + '30',
-  },
-  devHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.xs + 2,
-    gap: 4,
-  },
-  devTag: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: Colors.primary,
-    letterSpacing: 1,
-  },
-  devButtonRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    width: '100%',
-  },
-  devCustomerBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  devCustomerText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  devAdminBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.primaryDark,
-  },
-  devAdminText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.white,
   },
 
   // Brand Values Strip

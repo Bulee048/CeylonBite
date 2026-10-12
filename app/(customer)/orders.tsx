@@ -10,32 +10,47 @@ import LoadingState from '../../components/ui/LoadingState';
 import Colors from '../../constants/colors';
 import Spacing from '../../constants/spacing';
 import Radius from '../../constants/radius';
-import { DetailedOrder, TrackStatus } from '../../data/mockOrders';
+import { DetailedOrder, TrackStatus } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 import { orderService } from '../../services/orderService';
+import { menuService } from '../../services/menuService';
+import { useCartStore } from '../../store/cartStore';
+
+import { useFocusEffect } from 'expo-router';
 
 export default function CustomerOrdersScreen() {
   const [activeTab, setActiveTab] = useState<'active' | 'past'>('active');
   const [orders, setOrders] = useState<DetailedOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const { user } = useAuthStore();
 
-  useEffect(() => {
-    loadOrders();
-  }, [user]);
-
   const loadOrders = async () => {
     setLoading(true);
-    const userOrders = await orderService.getUserOrders(user?.id || '');
-    setOrders(userOrders);
-    setLoading(false);
+    setError(null);
+    try {
+      const userOrders = await orderService.getUserOrders(user?.id || '');
+      setOrders(userOrders);
+    } catch (err: any) {
+      setError(err?.message || 'Could not load your orders right now.');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadOrders();
+    }, [user])
+  );
 
   const filteredOrders = orders.filter((o) => o.type === activeTab);
 
   const getStatusBadge = (status: TrackStatus) => {
     switch (status) {
+      case 'pending':
+        return { label: 'Pending ⏳', color: Colors.secondaryText, bg: Colors.chipUnselected };
       case 'preparing':
         return { label: 'Preparing 🍳', color: Colors.primary, bg: Colors.lightOrange };
       case 'confirmed':
@@ -46,6 +61,8 @@ export default function CustomerOrdersScreen() {
         return { label: 'Delivered ✅', color: Colors.success, bg: '#DCFCE7' };
       case 'cancelled':
         return { label: 'Cancelled ❌', color: Colors.error, bg: '#FEE2E2' };
+      default:
+        return { label: 'In Progress', color: Colors.primaryDark, bg: Colors.chipUnselected };
     }
   };
 
@@ -109,8 +126,63 @@ export default function CustomerOrdersScreen() {
     });
   };
 
-  const handleReorder = () => {
-    Alert.alert('Reorder Meal', 'Reorder functionality will be added in a future update.');
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
+
+  const handleReorder = async (orderId: string) => {
+    try {
+      setReorderingId(orderId);
+      const detailedOrder = await orderService.getOrderById(orderId);
+      if (!detailedOrder || !detailedOrder.items || detailedOrder.items.length === 0) {
+        Alert.alert('Reorder Error', 'Could not load items for this order.');
+        return;
+      }
+
+      const availableFoods = await menuService.getFoods();
+      const foodMap = new Map<string, any>();
+      availableFoods.forEach((f) => foodMap.set(f.id, f));
+
+      let addedCount = 0;
+      const unavailableNames: string[] = [];
+      const cartStore = useCartStore.getState();
+
+      for (const orderItem of detailedOrder.items) {
+        const currentFood = foodMap.get(orderItem.foodId);
+        if (currentFood && currentFood.isAvailable) {
+          cartStore.addItem({
+            foodId: currentFood.id,
+            name: currentFood.name,
+            image: currentFood.image,
+            basePrice: currentFood.price,
+            quantity: orderItem.quantity,
+            selectedSpice: orderItem.customization || 'Ceylon Spicy',
+            extras: [],
+            unitTotal: currentFood.price,
+          });
+          addedCount++;
+        } else {
+          unavailableNames.push(orderItem.name);
+        }
+      }
+
+      if (unavailableNames.length > 0) {
+        Alert.alert(
+          'Reorder Partial Success',
+          `Added ${addedCount} available item(s) to cart.\n\nUnavailable item(s) skipped: ${unavailableNames.join(', ')}`,
+          [
+            {
+              text: 'Go to Cart',
+              onPress: () => router.push('/cart'),
+            },
+          ]
+        );
+      } else {
+        router.push('/cart');
+      }
+    } catch (err: any) {
+      Alert.alert('Reorder Failed', err?.message || 'Failed to reorder items.');
+    } finally {
+      setReorderingId(null);
+    }
   };
 
   return (
@@ -145,7 +217,17 @@ export default function CustomerOrdersScreen() {
         </View>
       </View>
 
-      {filteredOrders.length === 0 ? (
+      {loading ? (
+        <LoadingState message="Loading your orders..." />
+      ) : error ? (
+        <EmptyState
+          iconName="cloud-offline-outline"
+          title="Could Not Load Orders"
+          description={error}
+          buttonTitle="Retry"
+          onButtonPress={loadOrders}
+        />
+      ) : filteredOrders.length === 0 ? (
         <EmptyState
           iconName="receipt-outline"
           title={`No ${activeTab === 'active' ? 'Active' : 'Past'} Orders`}
@@ -215,8 +297,9 @@ export default function CustomerOrdersScreen() {
                         style={styles.pastBtn}
                       />
                       <AppButton
-                        title="Reorder"
-                        onPress={handleReorder}
+                        title={reorderingId === item.id ? 'Reordering...' : 'Reorder'}
+                        onPress={() => handleReorder(item.id)}
+                        disabled={reorderingId === item.id}
                         size="small"
                         variant="secondary"
                         fullWidth={false}
