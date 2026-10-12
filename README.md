@@ -70,25 +70,29 @@ CeylonBite/
 
 > **Upgrading an existing database?** Run the migration scripts in `backend/database/migrations/` in order (`001`, `002`, `003`) **before** `seed.sql`. Fresh installs do not need them — `schema.sql` already contains everything. Migration `003` creates the `Extras` add-on catalog that the food-detail screen and order pricing require.
 
-### 2. Backend Startup
+### 2. Run Both Backend & Frontend Together (Recommended)
+From the project root:
+```bash
+npm run dev
+```
+This runs both the Express backend API (Port 5001) and Expo frontend simultaneously in a single terminal.
+- Press **`w`** in the terminal to launch the web preview.
+- Or run **`npm run dev:web`** to start both and open web automatically.
+
+### 3. Running Separately (Alternative)
+**Backend:**
 ```bash
 cd backend
-npm install
 npm run dev
 ```
 Health Check: `http://localhost:5001/api/health`
 
-> The backend connects to SQL Server with the least-privilege **`CeylonBiteAppUser`** account (see `backend/.env`). Copy `backend/.env.example` to `backend/.env` and confirm `DB_USER` / `DB_PASSWORD` match your `create-app-login.sql` run. Never use the `sa` admin account.
-
-### 3. Frontend Startup
+**Frontend:**
 ```bash
 # From project root
-npm install
 npm start
 ```
 Press **`w`** to open Expo Web preview.
-
-> The frontend reads `EXPO_PUBLIC_API_URL` from `.env` (see `.env.example`). Android emulator: `http://10.0.2.2:5001/api`; physical device: your machine's LAN IP.
 
 ### 4. Running from another IDE or machine (VS Code, WebStorm, …)
 

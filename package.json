@@ -4,6 +4,8 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
+    "dev": "concurrently -k -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run dev --prefix backend\" \"expo start\"",
+    "dev:web": "concurrently -k -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run dev --prefix backend\" \"expo start --web\"",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
@@ -34,6 +36,7 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@types/react": "~18.2.45",
+    "concurrently": "^10.0.6",
     "typescript": "~5.3.3"
   },
   "private": true
