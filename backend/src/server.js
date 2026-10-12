@@ -5,7 +5,9 @@ const PORT = process.env.PORT || 5001;
 
 app.listen(PORT, () => {
   console.log(`===================================================`);
-  console.log(`🚀 CeylonBite REST API Server running on port ${PORT}`);
-  console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`🍔 CeylonBite Fullstack App is Ready!`);
+  console.log(`🌐 Frontend (Web App):   http://localhost:8081`);
+  console.log(`⚙️  Backend REST API:     http://localhost:${PORT}/api`);
+  console.log(`📡 Health Check:         http://localhost:${PORT}/api/health`);
   console.log(`===================================================`);
 });
